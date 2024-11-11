@@ -1,0 +1,128 @@
+---
+title: "Codigo Capitulo 3"
+author: "Vicente Arce"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+# Importación de paquetes
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+if(!require(dplyr)) install.packages("dplyr")
+if(!require(tidyr)) install.packages("tidyr")
+if(!require(ggplot2)) install.packages("ggplot2")
+if(!require(knitr)) install.packages("knitr")
+if(!require(kableExtra)) install.packages("kableExtra")
+if(!require(modeest)) install.packages("moodest")
+
+if(!require(ggpubr)) install.packages(ggpubr)
+```
+
+```{=html}
+<style>
+body {
+text-align: justify}
+</style>
+```
+
+# 3.2 Distribuciones continuas
+* funciones para distribuciones
+*ddist() // corresponde a la función de densidad
+*pdist() // corresponde a el calculo de una prob hasta q
+*qdist() // corresponde a el calculo del cuantil para qel que se cumple una probabildad
+*rdist // genera n obs de la dist dada
+
+### 3.2.1 Distribución normal [norm]
+* dnorm (x, mean, sd) // Densidad de probabilidad normal
+* pnorm(q, mean, sd, lower.tail) // permite encontrar percentiles los cuales corresponden a la función de distribución acumulada a partir de la probabilidad
+* qnorm(p, mean, sd, lower.tail): encuentra el percentil para las probabilidades dadas en p
+* rnorm(n, mean, sd): genera aleatoriamente n observaciones de la distribución normal especificada
+
+```{r 3.2.1}
+media <- 10 
+sd <- 6
+x <- seq(-15, 35, 0.01)
+y <- dnorm(x, mean = media, sd = sd)
+normal1 <- data.frame(x, y)
+
+g <- ggplot(normal1, aes(x, y)) + geom_line(color = "blue")  + theme_pubr()
+print (g)
+
+### Gráfico Q-Q
+df <- read.csv2("../Capitulo1_Introduccion/mtcars2.csv")
+
+g <- ggqqplot(datos, x  = "Rendimiento", color = "red")
+print(g)
+```
+### 3.2.2 Distribución Z [Normal estandariza mu = 0, sd = 1]
+
+### 3.2.3 Distribución chi-cuadrado [chisq]
+* Compara independencias de variables categoricas
+* Comprueba que tan bien se ajusta una muestra a una distribución
+* Grados de libertad 
+
+* dchisq(x, df).
+* pchisq(q, df, lower.tail).
+* qchisq(p, df, lower.tail).
+* rchisq(n, df).
+
+### 3.2.4 Ditribución t de Student [t]
+* Empleado para muestras pequeñas
+* Único parametro grados de libertad
+
+* dt(x, df).
+* pt(q, df, lower.tail).
+* qt(p, df, lower.tail).
+* rt(n, df).
+
+### 3.2.5 Distribución F [f]
+* Usado para comparar varianzas
+
+* df(x, df1, df2).
+* pf(q, df1, df2, lower.tail).
+* qf(p, df1, df2, lower.tail).
+* rf(n, df1, df2)
+
+# 3.3 Distribuciones discretas
+
+### 3.3.1 Distribución de Bernoulli[dbern]
+* En cada intento individual hay dos casos (exito y fracaso)
+
+* dbern(x, prob).
+* pbern(q, prob, lower.tail).
+* qbern(p, pro, lower.tail).
+* rbern(n, prob).
+
+### 3.3.2 Distribución geométrica
+* Cantidad de intentos fallidos antes de un éxito
+* Ejemplo ¿cuántas veces tenemos que lanzar un dado de 20 caras para obtener un 1? 
+
+* dgeom(x, prob).
+* pgeom(q, prob, lower.tail).
+* qgeom(p, prob, lower.tail).
+* rbern(n, prob).
+
+### 3.3.3 Distribución binomial
+* Describe la probabilidad de tener exactamente k éxitos en n intentos independientes de Bernoulli.
+
+* dbinom(x, size, prob).
+* pbinom(x, size, prob).
+* qbinom(p, size, prob).
+* rbinom(n, size, prob).
+
+### 3.3.4 Distribución binomial negativa
+* Probabilidad de encontrar el k-ésimo éxito en el n-esimo intento
+
+* dnbinom(x, size, prob).
+* pnbinom(q, size, prob, lower.tail).
+* qnbinom(p, size, prob, lower.tail).
+* rnbinom(n, size, prob).
+
+### 3.3.5 Distribución de Poisson
+* Estima la cantidad de eventos de una población grande en un lapso de tiempo
+
+* dpois(x, lambda).
+* ppois(q, lambda, lower.tail).
+* qqpois(p, lambda, lower.tail).
+* rpois(n, lambda).

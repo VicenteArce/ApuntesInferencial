@@ -1,0 +1,156 @@
+---
+title: "Capítulo 10"
+date: "`r Sys.Date()`"
+output: html_document 
+---
+
+```{r setup, include=FALSE}
+if(!require(dplyr)) install.packages("dplyr")
+if(!require(tidyr)) install.packages("tidyr")
+if(!require(ggplot2)) install.packages("ggplot2")
+if(!require(dplyr)) install.packages("dplyr")
+if(!require(ggpubr)) install.packages("ggpubr")
+if(!require(ggplot2)) install.packages("ggplot2")
+if(!require(ggmosaic)) install.packages("ggmosaic")
+if(!require(kableExtra)) install.packages("kableExtra")
+if(!require(ggpattern)) install.packages("ggpattern")
+if(!require(pwr)) install.packages("pwr")
+if(!require(tidyverse)) install.packages("tidyverse")
+if(!require(rcompanion)) install.packages("rcompanion")
+if(!require(RVAideMemoire)) install.packages("RVAideMemoire")
+if(!require(ez)) install.packages("ez")
+if(!require(nlme)) install.packages("nlme")
+if(!require(emmeans)) install.packages("emmeans")
+if(!require(DescTools)) install.packages("DescTools")
+```
+
+
+```{=html}
+<style>
+body {
+text-align: justify}
+</style>
+```
+
+
+En el procedimiento ANOVA para muestras correlacionadas, se asocia a la prueba t con muestras apareadas, pero para más de dos grupos. La hipótesis nula es que no hay diferencias significativas entre los grupos. La hipótesis alternativa es que al menos un grupo es significativamente diferente de los demás.
+
+## Condiciones para usar ANOVA para muestras correlacionadas
+1) La escala con la que se mide la variable dependiente tiene las propiedades de una escala de intervalos iguales. [Lo anterior quiere decir que la diferencia entre 1 y 2, es la misma que entre 3 y 4, y así para cada uno de los valores de la variable dependiente].
+
+2) Las mediciones son independientes al interior de cada grupo.
+
+3) Se puede suponer razonablemente que las poblaciones de origen siguen una distribución normal.
+
+4) La matriz de varianzas-covarianzas es esférica. [Usar funión ezAnova() para verificar esta condición, la cual usa la prueba de Mauchly].
+
+
+
+## Ejemplo
+
+```{r a}
+
+# Crear el data frame.
+instancia <- factor(1:6)
+Quicksort <- c(23.2, 22.6, 23.4, 23.3, 21.8, 23.9)
+Bubblesort <- c(31.6, 29.3, 30.7, 30.8, 29.8, 30.3)
+Radixsort <- c(30.1, 28.4, 28.7, 28.3, 29.9, 29.1)
+Mergesort <- c(28.0, 26.7, 26.7, 23.7, 25.5, 24.7)
+datos <- data.frame(instancia, Quicksort, Bubblesort, Radixsort, Mergesort)
+
+# Llevar data frame a formato largo.
+datos <- datos %>% pivot_longer(c("Quicksort", "Bubblesort", "Radixsort", 
+                                 "Mergesort"),
+                               names_to = "algoritmo",
+                               values_to = "tiempo")
+
+datos[["algoritmo"]] <- factor(datos[["algoritmo"]])
+
+# Comprobación de normalidad.
+g <- ggqqplot(datos, x = "tiempo", y = "algoritmo", color = "algoritmo")
+g <- g + facet_wrap(~ algoritmo)
+g <- g + rremove("x.ticks") + rremove("x.text")
+g <- g + rremove("y.ticks") + rremove("y.text")
+g <- g + rremove("axis.title")
+print(g)
+
+# Procedimiento ANOVA con aov().
+prueba <- aov(tiempo ~ algoritmo + Error(instancia/(algoritmo)),
+              data = datos)
+cat("\nResultado de la prueba ANOVA para muestras correlacionadas con aov\n")
+print(summary(prueba))
+
+# Procedimiento ANOVA con ezANOVA().
+prueba2 <- ezANOVA(data = datos, dv = tiempo, within = algoritmo,
+                   wid = instancia, return_aov = TRUE)
+cat("\nResultado de la prueba ANOVA para muestras correlacionadas con ezANOVA\n")
+print(summary(prueba2[["aov"]]))
+
+# Pero ezANOVA entrega más información.
+cat("\nResultado de la prueba de esfericidad de Mauchly\n")
+print(prueba2[["Mauchly's Test for Sphericity"]])
+
+cat("\nFactores de corrección cuando no se\n")
+cat("cumple la condición de esfericidad\n")
+print(prueba2[["Sphericity Corrections"]])
+
+# Gráfico del tamaño del efecto.
+g2 <- ezPlot(data = datos, dv = tiempo, wid = instancia, within = algoritmo,
+             y_lab = "Tiempo promedio de ejecución [ms]", x = algoritmo)
+g2 <- g2 + theme_pubr()
+print(g2)
+
+```
+
+
+# Procedimientos Post-Hoc
+
+```{r b}
+# Crear el data frame.
+instancia <- factor(1:6)
+Quicksort <- c(23.2, 22.6, 23.4, 23.3, 21.8, 23.9)
+Bubblesort <- c(31.6, 29.3, 30.7, 30.8, 29.8, 30.3)
+Radixsort <- c(30.1, 28.4, 28.7, 28.3, 29.9, 29.1)
+Mergesort <- c(25.0, 25.7, 25.7, 23.7, 25.5, 24.7)
+datos <- data.frame(instancia, Quicksort, Bubblesort, Radixsort, Mergesort)
+
+# Llevar data frame a formato largo.
+datos <- datos %>% pivot_longer(c("Quicksort", "Bubblesort", "Radixsort",
+                                 "Mergesort"),
+                               names_to = "algoritmo", values_to = "tiempo")
+
+datos[["algoritmo"]] <- factor(datos[["algoritmo"]])
+
+# Nivel de significación.
+alfa <- 0.01
+
+# Procedimiento ANOVA.
+anova <- ezANOVA(data = datos, dv = tiempo, within = algoritmo,
+                 wid = instancia, return_aov = TRUE)
+
+# Procedimiento post-hoc de Bonferroni.
+bonferroni <- pairwise.t.test(datos[["tiempo"]], datos[["algoritmo"]],
+                             p.adj = "bonferroni", paired = TRUE)
+cat("Corrección de Bonferroni\n")
+print(bonferroni)
+
+# Procedimiento post-hoc de Holm.
+holm <- pairwise.t.test(datos[["tiempo"]], datos[["algoritmo"]],
+                       p.adj = "holm", paired = TRUE)
+cat("\n\nCorrección de Holm\n")
+print(holm)
+
+# Procedimiento post-hoc HSD de Tukey.
+mixto <- lm(tiempo ~ algoritmo, data = datos, random = ~1|instancia)
+medias <- emmeans(mixto, "algoritmo")
+tukey <- pairs(medias, adjust = "tukey")
+cat("\n\nPrueba HSD de Tukey\n\n")
+print(tukey)
+
+# Procedimiento post-hoc de Scheffé
+cat("\n\nComparación de Scheffé\n")
+scheffe <- pairs(medias, adjust = "scheffe")
+print(scheffe)
+
+
+```

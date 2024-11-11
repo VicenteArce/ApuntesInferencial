@@ -1,0 +1,89 @@
+---
+title: "Capítulo 11"
+date: "`r Sys.Date()`"
+output: html_document 
+---
+
+```{r setup, include=FALSE}
+if(!require(dplyr)) install.packages("dplyr")
+if(!require(tidyr)) install.packages("tidyr")
+if(!require(ggplot2)) install.packages("ggplot2")
+if(!require(dplyr)) install.packages("dplyr")
+if(!require(ggpubr)) install.packages("ggpubr")
+if(!require(ggplot2)) install.packages("ggplot2")
+if(!require(ggmosaic)) install.packages("ggmosaic")
+if(!require(kableExtra)) install.packages("kableExtra")
+if(!require(ggpattern)) install.packages("ggpattern")
+if(!require(pwr)) install.packages("pwr")
+if(!require(tidyverse)) install.packages("tidyverse")
+if(!require(rcompanion)) install.packages("rcompanion")
+if(!require(RVAideMemoire)) install.packages("RVAideMemoire")
+if(!require(ez)) install.packages("ez")
+if(!require(nlme)) install.packages("nlme")
+if(!require(emmeans)) install.packages("emmeans")
+if(!require(DescTools)) install.packages("DescTools")
+```
+
+```{=html}
+<style>
+body {
+text-align: justify}
+</style>
+```
+
+# Prueba de suma de rangos de Wilcoxon
+
+* Usada como una alternativa no paramétrica a la prueba t para dos muestras independientes.
+
+* Sus condiciones son:
+1) Las observaciones de ambas muestras son independientes.
+2) La escala de medición empleada debe ser a lo menos ordinal, de modo que tenga sentido hablar de mayor o menor.
+
+## Ejemplo
+
+** H0: no hay diferencia en la usabilidad entre las interfaces A y B.
+** H1: hay diferencia en la usabilidad entre las interfaces A y B.
+
+```{r a}
+# Ingresar los datos
+Interfaz_A <- c(2.7, 6.6, 1.6, 5.1, 3.7, 6.1, 5.0, 1.4, 1.8, 1.5, 3.0, 5.3)
+Interfaz_B <- c(5.0, 1.4, 5.6, 4.6, 6.7, 2.7, 1.3, 6.3, 3.7, 1.3, 6.8)
+
+# Establecer nivel de significación
+alfa <- 0.05
+
+# Hacer la prueba de Mann-Whitney
+prueba <- wilcox.test(Interfaz_A, Interfaz_B, alternative = "two.sided", conf.level = 1 - alfa)
+print(prueba)
+
+```
+
+
+# Prueba de rangos con signo de Wilcoxon
+
+* Usada como una alternativa no paramétrica a la prueba t para dos muestras correlacionadas.
+
+
+* Sus condiciones son:
+1) Los pares de observaciones son independientes.
+2) La escala de medición empleada debe ser a lo menos ordinal, de modo que tenga sentido hablar de mayor o menor.
+
+
+## Ejemplo
+
+** H0: Las mismas personas no perciben diferencia en la usabilidad entre las interfaces A y B.
+** HA: Las mismas personas consideran que la interfaz A tiene mejor usabilidad que la interfaz B.
+```{r b}
+# Ingresar los datos
+Interfaz_A <- c(2.9, 6.1, 6.7, 4.7, 6.4, 5.7, 2.7, 6.9, 1.7, 6.4)
+Interfaz_B <- c(6.0, 2.8, 1.3, 4.7, 3.1, 1.8, 2.9, 4.0, 2.3, 3.4)
+
+# Establecer nivel de significación
+alfa <- 0.05
+
+# Hacer la prueba de rangos con signo de Wilcoxon
+prueba <- wilcox.test(Interfaz_A, Interfaz_B, paired = TRUE, 
+                      alternative = "greater", conf.level = 1 - alfa)
+print(prueba)
+
+```

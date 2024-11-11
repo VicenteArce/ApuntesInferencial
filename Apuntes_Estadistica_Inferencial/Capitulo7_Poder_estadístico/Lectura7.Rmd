@@ -1,0 +1,79 @@
+---
+title: "Codigo Capitulo 5"
+author: "Vicente Arce"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+# Importación de paquetes
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+if(!require(dplyr)) install.packages("dplyr")
+if(!require(tidyr)) install.packages("tidyr")
+if(!require(ggplot2)) install.packages("ggplot2")
+if(!require(knitr)) install.packages("knitr")
+if(!require(kableExtra)) install.packages("kableExtra")
+if(!require(modeest)) install.packages("moodest")
+if(!require(TeachingDemos)) install.packages("TeachingDemos")
+if(!require(ggpubr)) install.packages(ggpubr)
+if(!require(ggpattern)) install.packages(ggpattern)
+if(!require(pwr)) install.packages("pwr")
+if(!require(effsize)) install.packages("effsize")
+if(!require(rstatix)) install.packages("rstatix")
+```
+
+# Poder Estadístico
+* Recordemos los tipos de errores que habían:
+* 1) Error tipo I: rechazar H0 en favor de HA cuando H0 es en realidad verdadera.
+* 2) Error tipo II: no rechazar H0 en favor de HA cuando HA es en realidad verdadera.
+
+* El efecto es el cambio o inpacto que existe en una variable debido a una intervención o condición particular.
+* El tamaño del efecto corresponde a la cuantificación de la magnitud de la asociación o diferencia entre dos grupos o variables.
+
+
+# Potencia de la prueba Z
+
+El cálculo del poder de la prueba Z, se puede usar lo siguiente:
+
+pwr.norm.test(d, n, sig.level, power, alternative)
+* d: Tamaño del efecto (d = mu - mu0 / sigma)
+* n: Tamaño de la muestra
+* sig.level: Nivel de significancia
+* power: Poder de la prueba
+* alternative: Tipo de hipótesis alternativa (two.sided, less, greater)
+
+
+```{r a}
+
+print(pwr.norm.test(d = -4.2/12, n = 36, sig.level = 0.05, alternative = "two.sided"))
+
+
+```
+
+# Potencia de la prueba t de Student
+
+El cálculo del poder de la prueba t de Student, se puede usar lo siguiente:
+
+### Poder para una muestra
+
+pwr.t.test(n, d, sig.level, power, type, alternative)
+* n: Tamaño de la muestra
+* d: Tamaño del efecto (d de Cohen)
+* sig.level: Nivel de significancia
+* power: poder de la prueba
+* type: Tipo de prueba (two.sample, paired, one.sample)
+* alternative: Tipo de hipótesis alternativa (two.sided, less, greater)
+
+### Para dos muestras independientes
+
+pwr.t2n.test(n1, n2, d, sig.level, power, alternative)
+
+
+```{r b}
+# Para calcular la d de Cohen:
+muestra1 <- c(1.2, 1.3, 1.4, 1.5, 1.6)
+muestra2 <- c(1.3, 1.4, 1.5, 1.6, 1.7)
+
+d <- cohensD(muestra1, muestra2)
+```

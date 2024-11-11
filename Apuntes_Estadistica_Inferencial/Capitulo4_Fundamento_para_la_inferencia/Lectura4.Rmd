@@ -1,0 +1,65 @@
+---
+title: "Codigo Capitulo 4"
+author: "Vicente Arce"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+# Importación de paquetes
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+if(!require(dplyr)) install.packages("dplyr")
+if(!require(tidyr)) install.packages("tidyr")
+if(!require(ggplot2)) install.packages("ggplot2")
+if(!require(knitr)) install.packages("knitr")
+if(!require(kableExtra)) install.packages("kableExtra")
+if(!require(modeest)) install.packages("moodest")
+
+if(!require(ggpubr)) install.packages(ggpubr)
+```
+
+```{=html}
+<style>
+body {
+text-align: justify}
+</style>
+```
+
+# 4.1 Estimadores puntuales
+* Se desea conocer que tan cerca está un estadístico del parametro real de la población
+* Tiende a mejorar ientras crece la muestra
+* Para saber que tan adecuado es un estimador , hay que saber cuanto varia de una muestra a otra.
+* Distribución muestral: distribución de estimadores puntuales con todas las diferentes muestras de igual tamaño de la misma población. Su media suele aglutiarse entonrno a la media poblacional, estor por el Teorema del límite central.
+
+# 4.2 Modelos estadísticos
+* De manera más formal, es una descripción de un proceso de probailístico con parámetros desconocidos que sebe n ser estimados en base a suposiciones y un conjunto de datos observados
+
+# 4.3 Error estándar
+* El error estándar, denotado usualmente por SEθˆ o σθˆ, corresponde a la desviación
+estándar de la distribución de un estimador muestral ˆθ de un parámetro θ.
+* Un método confiable que podemos usar para asegurar que las observaciones sean independientes es
+realizar un muestreo aleatorio simple1 que abarque menos del 10 % de la población
+
+* modelo normal: 
+1. Las observaciones de la muestra son independientes.
+2. La muestra es grande (en general n ≥ 30).
+3. La distribución de la muestra no es significativamente asimétrica. Esto último suele además relacionarse
+con la presencia de valores atípicos. Mientras mayor sea el tamaño de la muestra, más se puede relajar
+esta condición.
+
+# 4.4 Intervalos de confianza
+* Corresponde al rango de valores aceptados
+* Para la distribución normal un 95% de las veces habremos capturado el parametro real
+
+x ± z∗ · SE
+
+* x % (x = 1−α). Su significado es, sencillamente, “se tiene x % de certeza de que el parámetro de la población se encuentra entre...”
+
+# 4.5 Pruebas de hipótesis
+* H0: hipótesis nula, no hay cambios, se formula muA = muB
+
+* HA: pruebas de dos colas si muA != muB; 
+      pruebas de una cola si muA > muB o muA < muB
+  
+

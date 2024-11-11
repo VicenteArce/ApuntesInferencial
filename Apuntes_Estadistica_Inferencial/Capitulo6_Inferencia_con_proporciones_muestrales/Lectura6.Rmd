@@ -1,0 +1,134 @@
+---
+title: "Codigo Capitulo 5"
+author: "Vicente Arce"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+# Importación de paquetes
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+if(!require(dplyr)) install.packages("dplyr")
+if(!require(tidyr)) install.packages("tidyr")
+if(!require(ggplot2)) install.packages("ggplot2")
+if(!require(knitr)) install.packages("knitr")
+if(!require(kableExtra)) install.packages("kableExtra")
+if(!require(modeest)) install.packages("moodest")
+if(!require(TeachingDemos)) install.packages("TeachingDemos")
+if(!require(ggpubr)) install.packages(ggpubr)
+```
+
+# Método de Wald
+Condiciones:
+* 1) Las observaciones de la muestra son independientes
+* 2) Se cumple la condición de éxito-fracaso, establece que se espera que np >= 10, n(1-p) >= 10.
+
+### Método de Wald para una proporción
+
+```{r wald_para_una_proporcion}
+n <- 150
+p_exito <- 0.64
+alpha <- 0.05
+valor_nulo <- 0.7
+
+# Construccion del intervalo de confianza
+error_est <- sqrt((p_exito * (1 - p_exito))/n)
+Z_critico <- qnorm(alpha/2, lower.tail = FALSE)
+inf <- p_exito - Z_critico * error_est
+sup <- p_exito + Z_critico * error_est
+
+cat("IC = [", inf, ", ", sup, "]\n", sep = "")
+# Prueba de hipótesis
+error_est_hip <- error_est <- sqrt((valor_nulo * (1 - valor_nulo))/n)
+Z <- (p_exito - valor_nulo)/error_est_hip
+p <- pnorm(Z, lower.tail = FALSE)
+
+cat("Hipotesis alternativa unilateral\n")
+cat("Z =", Z, "\n")
+cat("p =", p)
+
+
+
+```
+
+### Método de Wald para dos proporciones
+Condiciones: 
+* 1) Cada proporción por separado sigue el modelo normal
+* 2) Las dos muestras son independientes una de la otra
+
+```{r wald_para_dos_proporciones}
+# Fijar valores conocidos
+n_hombres <- 48
+n_mujeres <- 42
+exitos_hombres <- 26
+exitos_mujeres <- 20
+alpha <- 0.05
+valor_nulo <- 0
+
+# Calcular probabilidad de éxito
+p_hombres <- exitos_hombres/n_hombres
+p_mujeres <- exitos_mujeres/n_mujeres
+
+# Estimar la diferencia
+diferencia <- p_hombres - p_mujeres
+
+# Construccion IC
+error_hombres <- (p_hombres * (1- p_hombres))/ n_hombres
+error_mujeres <- (p_mujeres * (1- p_mujeres))/ n_mujeres
+error_est <- sqrt(error_hombres + error_mujeres)
+Z_critico <- qnorm(alpha/2, lower.tail = FALSE)
+inf <- diferencia - Z_critico * error_est
+sup <- diferencia + Z_critico * error_est
+
+cat("IC = [", inf, ", ", sup, "]\n", sep = "")
+
+# Prueba de hipótesis
+p_agrupada <- (exitos_hombres + exitos_mujeres) / (n_hombres + n_mujeres)
+error_hombres <- (p_agrupada * (1 - p_agrupada)) / n_hombres
+error_mujeres <- (p_agrupada * (1 - p_agrupada)) / n_mujeres
+error_est_hip <- sqrt(error_hombres + error_mujeres)
+Z <- (diferencia - valor_nulo)/error_est_hip
+p <- 2 * pnorm(Z, lower.tail = FALSE)
+
+
+cat("Hipotesis alternativa bilateral\n")
+cat("Z =", Z, "\n")
+cat("p =", p)
+
+
+```
+# Método de Wilson
+* Es una mejora al de Wald, se deben cumplir las mismas condiciones
+
+### Método de wilson para una proporción
+```{r wilson_para_una_proporcion}
+# Fijar valores conocidos
+n <- 150
+p_exito <- 0.64
+alpha <- 0.05
+valor_nulo <- 0.7
+
+# Calcular cantidad de éxitos
+exitos <- p_exito * n
+
+# Prueba de wilson en R
+prueba <- prop.test(exitos, n = n, p = valor_nulo, alternative = "greater", conf.level = 1 - alpha)
+
+print(prueba)
+```
+
+
+### Método de wilson para dos proporciones
+```{r wilson_para_dos_proporciones}
+# Fijar valores conocidos (hombres, mujeres)
+n <- c(48, 42)
+exitos <- c(26, 20)
+alpha <- 0.05
+
+# Prueba de Wilson en R
+prueba <- prop.test(exitos, n = n, alternative = "two.sided", conf.level = 1 - alpha)
+
+print(prueba)
+
+```

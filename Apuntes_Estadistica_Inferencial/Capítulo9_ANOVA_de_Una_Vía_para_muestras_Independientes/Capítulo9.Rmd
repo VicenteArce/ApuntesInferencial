@@ -1,0 +1,162 @@
+---
+title: "Capítulo 9"
+date: "`r Sys.Date()`"
+output: html_document 
+---
+
+```{r setup, include=FALSE}
+if(!require(dplyr)) install.packages("dplyr")
+if(!require(tidyr)) install.packages("tidyr")
+if(!require(ggplot2)) install.packages("ggplot2")
+if(!require(dplyr)) install.packages("dplyr")
+if(!require(ggpubr)) install.packages("ggpubr")
+if(!require(ggplot2)) install.packages("ggplot2")
+if(!require(ggmosaic)) install.packages("ggmosaic")
+if(!require(kableExtra)) install.packages("kableExtra")
+if(!require(ggpattern)) install.packages("ggpattern")
+if(!require(pwr)) install.packages("pwr")
+if(!require(tidyverse)) install.packages("tidyverse")
+if(!require(rcompanion)) install.packages("rcompanion")
+if(!require(RVAideMemoire)) install.packages("RVAideMemoire")
+if(!require(ez)) install.packages("ez")
+if(!require(nlme)) install.packages("nlme")
+if(!require(emmeans)) install.packages("emmeans")
+if(!require(DescTools)) install.packages("DescTools")
+```
+
+
+```{=html}
+<style>
+body {
+text-align: justify}
+</style>
+```
+
+ANOVA de una vía para muestras independientes, analiza la varianza de una variable dependiente continua en función de una variable independiente categórica con dos o más niveles. La hipótesis nula es que no hay diferencias significativas entre los grupos. La hipótesis alternativa es que al menos un grupo es significativamente diferente de los demás.
+
+## Condciones para usar ANOVA de una vía para muestras Independientes
+1) La escala con que se mide la variable dependiente tiene las propiedades de una escala de intervalos iguales. [Lo anterior quiere decir que la diferencia entre 1 y 2, es la misma que entre 3 y 4, y asi para cada uno de los valores de la variable dependiente].
+
+2) LAs k muestras son obtenidas de manera aleatoria e independiente desde la(s) probalciones de origen.
+
+3) Se puede suponer razonablemente que las poblaciones de origen siguen una distribucion normal.
+
+4) Si las muestras provienen de más de una población, las poblaciones tienen varianzas iguales.
+
+## Ejemplo
+
+```{r a}
+library(tidyverse)
+library(ggpubr)
+library(ez)
+
+# Crear el data frame en formato ancho.
+A <- c(23, 19, 26, 23, 20)
+B <- c(26, 24, 28, 23, 29)
+C <- c(19, 24, 20, 21, 17)
+datos <- data.frame(A, B, C)
+
+# Llevar data frame a formato largo.
+datos <- datos %>% pivot_longer(c("A", "B", "C"),
+                              names_to = "algoritmo",
+                              values_to = "tiempo")
+
+datos[["algoritmo"]] <- factor(datos[["algoritmo"]])
+datos[["instancia"]] <- factor(1:nrow(datos))
+
+# Comprobación de normalidad.
+g <- ggqqplot(datos,
+             x = "tiempo",
+             y = "algoritmo",
+             color = "algoritmo")
+
+g <- g + facet_wrap(~ algoritmo)
+g <- g + rremove("x.ticks") + rremove("x.text")
+g <- g + rremove("y.ticks") + rremove("y.text")
+g <- g + rremove("axis.title")
+print(g)
+
+# Procedimiento ANOVA con aov().
+cat("Procedimiento ANOVA usando aov\n\n")
+prueba <- aov(tiempo ~ algoritmo, data = datos)
+print(summary(prueba))
+
+# Procedimiento ANOVA con ezANOVA().
+cat("\n\nProcedimiento ANOVA usando ezANOVA\n\n")
+prueba2 <- ezANOVA(
+    data = datos,
+    dv = tiempo,
+    between = algoritmo,
+    wid = instancia,
+    return_aov = TRUE)
+
+print(prueba2)
+
+# Gráfico del tamaño del efecto.
+g2 <- ezPlot(
+    data = datos,
+    dv = tiempo,
+    wid = instancia,
+    between = algoritmo,
+    y_lab = "Tiempo promedio de ejecución [ms]",
+    x = algoritmo
+)
+
+g2 <- g2 + theme_pubr()
+
+print(g2)
+
+```
+
+
+## Analisis Post-Hoc
+
+#### Correcion de Bonferroni, Holm, Tukey y Scheffe
+
+```{r b}
+cat("Prueba de comparaciones múltiples con corrección de Bonferroni\n\n")
+bonferroni <- pairwise.t.test(datos[["tiempo"]],
+                              datos[["algoritmo"]],
+                              p.adj = "bonferroni",
+                              pool.sd = TRUE,
+                              paired = FALSE,
+                              conf.level = 0.95)
+print(bonferroni)
+
+cat("\n\nPrueba de comparaciones múltiples con corrección de Holm\n\n")
+holm <- pairwise.t.test(datos[["tiempo"]],
+                        datos[["algoritmo"]],
+                        p.adj = "holm",
+                        pool.sd = TRUE,
+                        paired = FALSE,
+                        conf.level = 0.95)
+
+print(holm)
+
+cat("\n\nPrueba de comparaciones múltiples con corrección de Tukey\n\n")
+anova <- aov(tiempo ~ algoritmo, data = datos)
+tukey <- TukeyHSD(anova, 
+                  "algoritmo",
+                  ordered = TRUE,
+                  conf.level = 0.95)
+print(tukey)
+
+
+cat("\n\nPrueba de comparaciones múltiples con corrección de Scheffe\n\n")
+contrastes <- matrix(c(1, -1, 0,
+                        1, 0, -1,
+                        0, 1, -1,
+                        1, -0.5, -0.5,
+                       -0.5, 1, -0.5,
+                       -0.5, -0.5, 1),
+                     ncol = 6,
+                     byrow = TRUE)
+contrastes <- t(contrastes)
+
+scheffe <- ScheffeTest(x = anova,
+                       wich = "algortimo",
+                       contrasts = contrastes,
+                       conf.level = 0.95)
+print(scheffe)
+
+```
