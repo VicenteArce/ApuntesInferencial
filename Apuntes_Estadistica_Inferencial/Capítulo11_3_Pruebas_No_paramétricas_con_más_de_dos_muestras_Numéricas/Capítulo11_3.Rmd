@@ -1,0 +1,138 @@
+---
+title: "Capítulo 11"
+date: "`r Sys.Date()`"
+output: html_document 
+---
+
+```{r setup, include=FALSE}
+if(!require(dplyr)) install.packages("dplyr")
+if(!require(tidyr)) install.packages("tidyr")
+if(!require(ggplot2)) install.packages("ggplot2")
+if(!require(dplyr)) install.packages("dplyr")
+if(!require(ggpubr)) install.packages("ggpubr")
+if(!require(ggplot2)) install.packages("ggplot2")
+if(!require(ggmosaic)) install.packages("ggmosaic")
+if(!require(kableExtra)) install.packages("kableExtra")
+if(!require(ggpattern)) install.packages("ggpattern")
+if(!require(pwr)) install.packages("pwr")
+if(!require(tidyverse)) install.packages("tidyverse")
+if(!require(rcompanion)) install.packages("rcompanion")
+if(!require(RVAideMemoire)) install.packages("RVAideMemoire")
+if(!require(ez)) install.packages("ez")
+if(!require(nlme)) install.packages("nlme")
+if(!require(emmeans)) install.packages("emmeans")
+if(!require(DescTools)) install.packages("DescTools")
+```
+
+```{=html}
+<style>
+body {
+text-align: justify}
+</style>
+```
+
+A continuación se explorarán alternativas para ANOVA de una vía.
+
+# Prueba de Kruskal-Wallis [ANOVA de una vía para muestras independientes no paramétrica]
+
+* Usada como una alternativa no paramétrica a la prueba ANOVA de una vía para muestras independientes. Se usa cuando no se cumplen las condiciones de normalidad y homocedasticidad, A su vez cuando los tamaños de las mmuestras difieren.
+
+
+* Condiciones:
+1) La variable independiente debe tener al menos dos niveles.
+2) La escala de la variable dependiente debe ser ordinal.
+3) Las observaciones son independientes.
+
+## Ejemplo
+
+** H0: todos los criterios llevan a consultas igualmente eficientes.
+** H1: al menos uno de los criterios genera consultas con eficiencia diferente a las generadas por al menos algún otro criterio.
+
+```{r a}
+# Construir la matriz de datos
+A <- c(24, 23, 26, 21, 24, 24, 25, 22, 23, 22, 23, 23)
+B <- c(22, 15, 18, 20, 19, 21, 20, 18, 19)
+C <- c(10, 11, 14, 11, 15, 12, 12, 10, 9, 13, 12, 12, 10, 10)
+D <- c(18, 16, 18, 16, 16, 15, 18, 16)
+Tiempo <- c(A, B, C, D)
+
+Criterio <- c(rep("A", length(A)), rep("B", length(B)),
+              rep("C", length(C)), rep("D", length(D)))
+Criterio <- factor(Criterio)
+
+datos <- data.frame(Tiempo, Criterio)
+
+# Establecer nivel de significación
+alfa <- 0.01
+
+# Hacer la prueba de Kruskal-Wallis
+prueba <- kruskal.test(Tiempo ~ Criterio, data = datos)
+print(prueba)
+
+# Efectuar procedimiento post-hoc de Benjamini & Hochberg
+# si se encuentran diferencias significativas.
+if(prueba[["p.value"]] < alfa) {
+    post_hoc <- pairwise.wilcox.test(datos[["Tiempo"]],
+                                    datos[["Criterio"]],
+                                    p.adjust.method = "BH",
+                                    paired = FALSE,
+                                    exact = FALSE)
+    print(post_hoc)
+}
+
+```
+
+
+# Prueba de Friedman [ANOVA de una vía para muestras correlacionadas no paramétrica]
+
+* Usada como una alternativa no paramétrica a la prueba ANOVA de una vía para muestras correlacionadas. Se usa cuando no se cumplen las condiciones de normalidad y esfericidad. A su vez hay veces en las que no se puede comprobar que la escala de medición sea de intervalos iguales.
+
+* Condiciones:
+1) La escala independietne debe ser categorica y a lo menos tres niveles.
+2) La escala de la variale deendiente debe ser, a lo menos, ordinal.
+3) Las observaciones son una muestra aleatoria e independiente de la pblación.
+
+## Ejemplo
+
+** H0: las interfaces obtienen índices de usabilidad similares.
+** HA: al menos una interfaz obtiene un índice de usabilidad distintos que al menos otra interfaz.
+
+
+```{r b}
+# Construir la matriz de datos
+A <- c(21, 10, 7, 21, 24, 27, 17)
+B <- c(6, 21, 18, 7, 24, 13, 13)
+C <- c(13, 25, 18, 20, 24, 8, 29)
+
+Puntuacion <- c(A, B, C)
+
+Interfaz <- c(rep("A", length(A)),
+             rep("B", length(B)),
+             rep("C", length(C)))
+
+Caso <- rep(1:7, 3)
+
+Interfaz <- factor(Interfaz)
+
+datos <- data.frame(Caso, Puntuacion, Interfaz)
+
+# Establecer nivel de significación
+alfa <- 0.05 
+
+# Hacer la prueba de Friedman
+prueba <- friedman.test(Puntuacion ~ Interfaz | Caso, data = datos)
+print(prueba)
+
+# Efectuar procedimiento post-hoc de Holm 
+fines_academicos <- TRUE
+
+if(prueba$p.value < alfa || fines_academicos) {
+   post_hoc <- pairwise.wilcox.test(datos$Puntuacion,
+                                   datos$Interfaz,
+                                   p.adjust.method = "holm",
+                                   paired = TRUE,
+                                   exact = FALSE)
+   print(post_hoc)
+}
+
+```
