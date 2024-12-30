@@ -1,0 +1,2608 @@
+---
+title: "EP 08 - 11"
+date: "2024-11-20"
+output: html_document
+---
+
+
+# EP 08
+
+Métodos con remuestreo
+
+Como vimos, la Encuesta de Caracterización Socioeconómica Nacional (Casen) es realizada por el Ministerio de Desarrollo Social de forma periódica para conocer la situación de los hogares chilenos con relación a aspectos demográficos, de educación, salud, vivienda, trabajo e ingresos. Es la principal fuente de información para estimar la magnitud de la pobreza y la distribución del ingreso en el país.
+
+
+### Pregunta 1
+
+Propongan una pregunta de investigación original, que involucre la comparación de una frecuencia de un evento o característica en dos grupos independientes. Fijando una semilla propia, seleccionen una muestra aleatoria de hogares (100 < n
+ < 150) y respondan la pregunta propuesta utilizando el método Monte Carlo.
+
+Pensando en la nueva política estatal sobre pensiones y el apoyo a personas con discapacidad, consideraremos la siguiente pregunta: la proporción de entrevistados fuera de la Región Metropolitana que presentan problemas significativos de movilidad pero que están cotizando para su jubilación tiene igual proporción entre hombres y mujeres.
+
+Esta pregunta plantea la comparación de dos proporciones. Luego, el estadístico de interés que debemos utilizar en este caso es la diferencia de las proporciones entre dos grupos independiente de personas.
+
+```{r setup, include=FALSE}
+library(dplyr)
+library(ez)
+library(ggpubr)
+library(tidyr)
+```
+
+Primero, carguemos los datos.
+
+```{r}
+
+datos <- read.csv(file = "EP08 Datos CASEN 2017.csv", stringsAsFactors = TRUE)
+```
+Filtremos para obtener los datos de interés y obtengamos la muestra que se solicita.
+
+```{r}  
+set.seed(347)
+n1 <- 125
+muestra1 <- datos |> filter(region != "Región Metropolitana de Santiago") |>
+  filter(h10e %in% c("No puede hacerlo", "Sí, mucha dificultad")) |>
+  filter(!is.na(o29)) |>
+  mutate(cotiza = ifelse(o29 == "No está cotizando", "No", "Sí")) |>
+  select(sexo, cotiza) |>
+  sample_n(n1)
+
+```
+
+Definamos una función que calcule la diferencia entre las proporciones de hombres y mujeres que cotizan para su jubilación.
+
+```{r}
+get.prop.dif <- function(df, verbose = FALSE)
+{
+  tabla <- table(df)
+  if(verbose)
+    print(tabla)
+  ph <- tabla[1, 2] / (tabla[1, 1] + tabla[1, 2])
+  pm <- tabla[2, 2] / (tabla[2, 1] + tabla[2, 2])
+  if(verbose)
+  {
+    cat("\n")
+    cat("Proporción de personas que cotizan:\n")
+    cat("Hombres:", round(ph, 4), "\n")
+    cat("Mujeres:", round(pm, 4), "\n")
+  }
+  return(ph - pm)
+}
+```
+
+Calculemos, usando esta función, la diferencia observada en la muestra obtenida.
+
+```{r}  
+dif.obs <- get.prop.dif(muestra1, TRUE)
+cat("\nDiferencia de proporciones observada:", round(dif.obs, 3), "\n")
+```
+
+Vemos que la diferencia en las muestras es bastante pequeña: 0,7%.
+
+Formulemos las hipótesis:
+H0: las proporciones de hombres (ph) y mujeres (pm) que viven en la Región Metropolitana de Santiago y que declaran tener problemas serios de movilidad pero que están cotizando para su jubilación son iguales: ph−pm=0.
+
+HA: Por el contrario, estas proporciones son distintas: ph−pm≠0.
+
+Definamos el número de permutaciones que vamos a trabajar (y si queremos mensajes).
+
+```{r}
+R <- 2999
+verbose <- FALSE
+if(R < 10)
+  verbose <- TRUE
+```
+
+
+Obtenemos las permutaciones, teniendo cuidado de usar una semilla, como indica el enunciado, que nos poermita obtener los mismos resultados cada que vez que ejecutemos el script.
+
+```{r}
+set.seed(349)
+permutaciones <- lapply(1:R, function(i) sample(1:n1))
+```
+
+Obtenemos la distribución permutada de las diferencias de proporciones aplicando nuestra función get.prop.dif() a cada una de las permutaciones generadas. Notemos que solo necesitamos permutar la variable sexo, que es la que define en qué grupo está incluido cada caso.
+
+```{r}
+get.prop.dif.perm <- function(indices, df, verbose = FALSE)
+{
+  df.nuevo <- data.frame(sexo = df[indices, "sexo"], df[["cotiza"]])
+  get.prop.dif(df.nuevo, verbose)
+}
+distribucion <- sapply(permutaciones, get.prop.dif.perm, muestra1, verbose)
+```  
+
+Revisemos cómo se ve esta distribución respecto del valor observado en la muestra original.
+
+```{r}
+p1 <- gghistogram(data.frame(distribucion), "distribucion", bins = 30, fill = "blue",
+                  title = "Distribución permutada",
+                  xlab = "Diferencia entre las proporciones\nde hombres y mujeres",
+                  ylab = "Frecuencia")
+p1 <- p1 + geom_vline(xintercept = dif.obs, colour="red")
+print(p1)
+```
+
+Podemos ver que la diferencia de las proporciones observada en la muestra original se ubica cerca del centro de distribución, no muy lejos del valor cero.
+
+Calculemos el intervalo de 95% confianza y el valor p para una prueba bilateral (usando el valor absoluto de las diferencias) con 95% de confianza, es decir la probabilidad de encontrar diferencias al menos tan extremas como la diferencia observada.
+
+```{r}
+ci1 <- quantile(distribucion, c(0.025, 0.975))
+numerador1 <- sum(abs( distribucion) > abs(dif.obs))
+valor_p1 <- (numerador1 + 1) / (R + 1)
+
+cat("IC 95%: [", round(ci1[1], 3), ", ", round(ci1[2], 3), "]\n", sep = "")
+cat("P-valor:", round(valor_p1, 3))
+```
+
+Lo que nos lleva a la siguiente conclusión:
+Se puede concluir, con 95% confianza, que no hay evidencia suficiente para rechazar la hipótesis nula (p=0,851
+) y tenemos que concluir que no es posible descartar que las proporciones de hombres y mujeres con problemas serios de movilidad que están cotizando para su jubilación son iguales (IC 95%=[−0,161;0,175]
+).
+
+
+
+### Pregunta 2
+
+Propongan una pregunta de investigación original, que involucre la comparación de las medias de más de dos grupos independientes. Fijando una semilla distinta a la anterior, seleccionen una muestra aleatoria de hogares (200 < n
+ < 300) y respondan la pregunta propuesta utilizando bootstrapping. Solo por ejercicio académico, aplique un análisis post-hoc con bootstrapping aunque este no sea necesario.
+
+En este caso, consideraremos la pregunta: ¿es igual el ingreso per cápita en las regiones de Atacama, Coquimbo y del Maule?
+
+Esta pregunta requiere contrastar las medias de 3 grupos independientes. Al haber más de dos medias, no es posible comparar directamente sus diferencias. Así, lo más conveniente en este caso es utilizar el estadístico F para evaluar su igualdad.
+
+Filtremos los datos y obtengamos la muestra como se solicita.
+
+```{r}
+n2 <- 275
+set.seed(572)
+regiones <- c("Región de Coquimbo", "Región de Atacama", "Región del Maule")
+muestra2 <- datos |> filter(region %in% regiones) |> droplevels() |>
+  mutate(region = recode(region, "Región de Atacama" = "Atacama")) |>
+  mutate(region = recode(region, "Región de Coquimbo" = "Coquimbo")) |>
+  mutate(region = recode(region, "Región del Maule" = "Maule")) |>
+  select(ytotcorh, numper, region) |>
+  mutate(ypercap = ytotcorh/numper, .keep = "unused") |>
+  sample_n(n2)
+```
+
+Formulamos las hipótesis:
+
+H0: El ingreso per cápita promedio es igual en las regiones de Atacama (μA), Coquimbo (μC) y el Maule (μM): μA=μC=μM.
+
+HA: El ingreso per cápita promedio es distinto en las regiones de Atacama, Coquimbo y el Maule: ∃(a,b)∈{A,C,M}∣μa≠μb
+
+Revisemos el tamaño de las muestras de observaciones en cada grupo.
+
+```{r}  
+print(summary(muestra2[["region"]]))
+```
+
+Ooops! Una complicación extra, puesto que las muestras tienen tamaños distintos y debemos mantener esos tamaños en el remuestreo. Separamos los índices de cada región con este objetivo en mente.
+
+```{r}
+iAtacama <- which(muestra2[["region"]] == "Atacama")
+iCoquimbo <- which(muestra2[["region"]] == "Coquimbo")
+iMaule <- which(muestra2[["region"]] == "Maule")
+```
+
+Revisemos los datos.
+
+```{r}
+muestra2[["ypercap_miles"]] <- muestra2[["ypercap"]] / 1000
+p2 <- ggboxplot(muestra2, x = "region", y = "ypercap_miles", fill = "region")
+p2 <- p2 + xlab("Región") + ylab("Ingreso per cápita (miles de pesos)")
+print(p2)
+```
+
+Podemos ver que los datos, además de estar desbalanceados, parecen no cumplir con la condición de heterocedasticidad y presentan numerosos valores atípicos. Así, no podemos usar un método de análisis clásico y debemos recurrir a métodos apropiados, en este caso remuestreo con bootstrapping.
+
+Definimos una función que calcula el estadístico de interés que, como se dijo, corresponde al estadístico F usado por ANOVA para muestras independientes.
+
+```{r}
+get.F <- function(df, iA, iC, iM, verbose = FALSE)
+{
+  # Armamos la matriz de datos con los índices recibidos 
+  i <- c(iA, iC, iM)
+  ids <- factor(1:length(i))
+  datos <- cbind(id = ids, df[i, ])
+  dd <- datos
+  
+  ez <- ezANOVA(datos, ypercap, id, between = region, type = 2)
+  if(verbose)
+    print(ez)
+  return(ez[["ANOVA"]][["F"]])
+}
+```
+
+Obtenemos el estadístico para la muestra original.
+
+```{r}
+F.obs <- get.F(muestra2, iAtacama, iCoquimbo, iMaule, TRUE)
+```
+
+Notemos que la llamada a ezANOVA()genera un mensaje (inútil y molesto a estas alturas) y una advertencia relacionada al desbalance en los datos. Como se comentó en el apunte, especificando type = 2 resuelve este inconveniente en la mayoría de los casos.
+
+Debemos recordar que, a diferencia del caso anterior con permutaciones, con bootstrapping (al remuestrear con reemplazo la muestra original) las remuestras no representan la hipótesis nula. Cuando teníamos dos muestras, podíamos recentrar la distribución bootstrap en el valor nulo. Pero ¿cómo hacemos esto con el estadístico F?
+
+Para ello debemos considerar que si la hipótesis nula se cumple, los tres grupos tienen las mismas medias y varianzas. Con más de dos grupos, es más fácil hacer estos ajustes antes del remuestreo. Para ello, nos basamos en las ideas propuestas por Fisher & Hall (1990), Hall & Wilson (1991) y Martin (2007).
+
+Primero vamos a obtener las medidas generales (pooled).
+
+```{r}
+media.gral <- mean(muestra2[["ypercap"]])
+sd.gral <- sd(muestra2[["ypercap"]])
+```
+
+Luego obtenemos las medidas por grupo (por región en este caso):
+
+```{r}
+grupos <- muestra2 |>
+  group_by(region) |>
+  summarise(media = mean(ypercap), sd = sd(ypercap)) |>
+  as.data.frame()
+```
+
+
+Ahora desplazamos los valores vistos para que los tres grupos tengan la misma media e igual varianza (en rigor, desviación estándar).
+
+```{r}
+muestra2b <- muestra2
+muestra2b[iAtacama, "ypercap"] <- media.gral +
+  (muestra2b[iAtacama, "ypercap"] - grupos[1, "media"]) *
+  (sd.gral / grupos[1, "sd"])
+muestra2b[iCoquimbo, "ypercap"] <- media.gral +
+  (muestra2b[iCoquimbo, "ypercap"] - grupos[2, "media"]) *
+  (sd.gral / grupos[2, "sd"])
+muestra2b[iMaule, "ypercap"] <- media.gral +
+  (muestra2b[iMaule, "ypercap"] - grupos[3, "media"]) *
+  (sd.gral / grupos[3, "sd"])
+```
+
+Definamos el número de remuestreos que vamos a utilizar (y si queremos mensajes a pantalla).
+
+```{r}
+B <- 2999
+verbose <- FALSE
+if(B < 10)
+  verbose <- TRUE
+```
+
+Generamos las remuestras definiendo una semilla adecuada y muestreando con reemplazo los índices de los datos de cada grupo.
+
+```{r}
+set.seed(573)
+re.iAtacama <- lapply(1:B, function(i) sample(iAtacama, replace = TRUE))
+re.iCoquimbo <- lapply(1:B, function(i) sample(iCoquimbo, replace = TRUE))
+re.iMaule <- lapply(1:B, function(i) sample(iMaule, replace = TRUE))
+```
+
+Obtenemos la distribución bootstrapping remuestreando cada región por separado (evitando mensajes y advertencias)
+
+```{r}
+cat("Remuestreando, por favor espere...\n")
+get.F.boot <- function(i, df, verbose = FALSE)
+  get.F(df, re.iAtacama[[i]], re.iCoquimbo[[i]], re.iMaule[[i]], verbose)
+
+distribucion <- suppressMessages(suppressWarnings(
+  sapply(1:B, function(i) get.F.boot(i, muestra2b, verbose))
+))
+```
+
+Revisemos cómo se ve esta distribución respecto del valor observado en la muestra original.
+
+```{r}
+p2 <- gghistogram(data.frame(distribucion), x = "distribucion",
+                  title = "Distribución permutada",
+                  xlab = "Estadístico F", ylab = "Frecuencia",
+                  bins = 30, fill = "blue")
+p2 <- p2 + geom_vline(xintercept = F.obs, colour="red")
+print(p2)
+```
+
+Vemos que el valor F observado parece estar bastante alejado de lo esperado si la hipótesis nula fuera cierta. Calculemos el valor crítico de F con 95% confianza en esta distribución empírica y estimemos el valor p correspondiente para el valor F observado.
+
+```{r}
+F_crit <- quantile(distribucion, 0.95)
+cat("F crítico con 95% de confianza:", round(F_crit, 3), "\n")
+
+numerador2 <- sum(distribucion > F.obs)
+valor_p2 <- (numerador2 + 1) / (B + 1)
+cat("P-valor:", round(valor_p2, 3))
+```
+
+Estamos en condiciones de concluir respecto a la prueba ómnibus:
+Observamos que si la hipótesis nula es correcta, el estadístico F(2,272) no debiera ser superior a 3,08
+ con 95% confianza. Como el estadístico F observado (en la muestra original) fue F(2,272)=4,56, que tiene una baja probabilidad de ser encontrado (p=0,015), se rechaza la hipótesis nula en favor de la alternativa. Concluimos entonces, con 95% confianza, que el ingreso per cápita promedio no es igual en las regiones estudiadas. Corresponde, entonces, hacer un análisis post-hoc.
+
+
+Para el análisis post-hoc, por conveniencia haremos comparaciones entre pares de regiones, teniendo cuidado de utilizar las mismas remuestras que usamos en la prueba ómnibus. Al analizar pares de regiones, podemos usar la diferencia de las medias como estadístico de interés.
+
+Escribamos la típica función que calcula esta diferencia.
+
+```{r}
+get.dif.medias <- function(df, i1, i2)
+{
+  media1 <- mean(df[i1, "ypercap"]) 
+  media2 <- mean(df[i2, "ypercap"])
+  return(media1 - media2)
+}
+```
+
+Obtenemos las diferencias observadas entre cada par de regiones.
+
+```{r}
+dif.obs.A.C <- get.dif.medias(muestra2, iAtacama, iCoquimbo)
+dif.obs.A.M <- get.dif.medias(muestra2, iAtacama, iMaule)
+dif.obs.C.M <- get.dif.medias(muestra2, iCoquimbo, iMaule)
+
+cat("Atacama - Coquimbo:", round(dif.obs.A.C), "\n")
+cat("Atacama - Maule:", round(dif.obs.A.M), "\n")
+cat("Coquimbo - Maule:", round(dif.obs.C.M), "\n")
+```
+
+Obtenemos las distribuciones bootstrap para cada diferencia.
+
+```{r}
+dist.boot.dif.A.C <- sapply(1:B,
+                            function(i) get.dif.medias(muestra2b,
+                                                       re.iAtacama[[i]],
+                                                       re.iCoquimbo[[i]]))
+dist.boot.dif.A.M <- sapply(1:B,
+                            function(i) get.dif.medias(muestra2b,
+                                                       re.iAtacama[[i]],
+                                                       re.iMaule[[i]]))
+dist.boot.dif.C.M <- sapply(1:B,
+                            function(i) get.dif.medias(muestra2b,
+                                                       re.iCoquimbo[[i]],
+                                                       re.iMaule[[i]]))
+```
+
+Y las graficamos (en miles de pesos).
+
+```{r}
+p3a <- gghistogram(data.frame(Diferencia = dist.boot.dif.A.C / 1000), x = "Diferencia",
+                   title = "Atacama-Coquimbo",
+                   xlab = "Diferencia (miles de pesos)", ylab = "Frecuencia",
+                   bins = 30, fill = "blue")
+p3a <- p3a + geom_vline(xintercept = dif.obs.A.C / 1000, colour="red")
+p3b <- gghistogram(data.frame(Diferencia = dist.boot.dif.A.M / 1000), x = "Diferencia",
+                   title = "Atacama-Maule",
+                   xlab = "Diferencia (miles de pesos)", ylab = "Frecuencia",
+                   bins = 30, fill = "blue")
+p3b <- p3b + geom_vline(xintercept = dif.obs.A.M / 1000, colour="red")
+p3c <- gghistogram(data.frame(Diferencia = dist.boot.dif.C.M / 1000), x = "Diferencia",
+                   title = "Coquimbo-Maule",
+                   xlab = "Diferencia (miles de pesos)", ylab = "Frecuencia",
+                   bins = 30, fill = "blue")
+p3c <- p3c + geom_vline(xintercept = dif.obs.C.M / 1000, colour="red")
+p3 <- ggarrange(p2, p3a, p3b, p3c, nrow = 2, ncol = 2)
+print(p3)
+```
+
+En los gráficos queda bastante claro dónde están las diferencias, pero para seguir con el ejercicio, calculamos los p-valores de pruebas bilaterales (usando el valor absoluto de las diferencias) y ajustados por pruebas múltiples.
+
+```{r}
+valor_p.A.C <- (sum(abs(dist.boot.dif.A.C) > abs(dif.obs.A.C)) + 1) / (B + 1)
+valor_p.A.M <- (sum(abs(dist.boot.dif.A.M) > abs(dif.obs.A.M)) + 1) / (B + 1)
+valor_p.C.M <- (sum(abs(dist.boot.dif.C.M) > abs(dif.obs.C.M)) + 1) / (B + 1)
+valores_p.adj <- p.adjust(c(valor_p.A.C, valor_p.A.M, valor_p.C.M), method = "BH")
+
+cat("Valores p de pruebas bilaterales:\n")
+cat("Atacama - Coquimbo:", round(valores_p.adj[1], 3), "\n")
+cat("Atacama - Maule   :", round(valores_p.adj[2],3), "\n")
+cat("Coquimbo - Maule  :", round(valores_p.adj[3], 3), "\n")
+```
+
+También podemos usar las remuestras para estimar los intervalos de confianza de las diferencias de las medias de ingresos per cápita entre las regiones observadas en en estudio.
+
+```{r}
+dist.boot.dif.obs.A.C <- sapply(1:B,
+                                function(i) get.dif.medias(muestra2,
+                                                          re.iAtacama[[i]],
+                                                          re.iCoquimbo[[i]]))
+dist.boot.dif.obs.A.M <- sapply(1:B,
+                                function(i) get.dif.medias(muestra2,
+                                                          re.iAtacama[[i]],
+                                                          re.iMaule[[i]]))
+dist.boot.dif.obs.C.M <- sapply(1:B,
+                                function(i) get.dif.medias(muestra2,
+                                                          re.iCoquimbo[[i]],
+                                                          re.iMaule[[i]]))
+
+ci.dif.obs.A.C <- quantile(dist.boot.dif.obs.A.C, c(0.025, 0.975))
+ci.dif.obs.A.M <- quantile(dist.boot.dif.obs.A.M, c(0.025, 0.975))
+ci.dif.obs.C.M <- quantile(dist.boot.dif.obs.C.M, c(0.025, 0.975))
+
+cat("Intervalos de 95% confianza:\n")
+cat("Atacama - Coquimbo: [", round(ci.dif.obs.A.C[1], 3), ", ",
+                             round(ci.dif.obs.A.C[2], 3), "]\n", sep = "")
+cat("Atacama - Maule   : [", round(ci.dif.obs.A.M[1], 3), ", ",
+                             round(ci.dif.obs.A.M[2], 3), "]\n", sep = "")
+cat("Coquimbo - Maule  : [", round(ci.dif.obs.C.M[1], 3), ", ",
+                             round(ci.dif.obs.C.M[2], 3), "]\n", sep = "")
+```
+
+Así, llegamos a la siguiente conclusión.
+En base al procedimiento post-hoc, podemos concluir con 95% de confianza que no hay diferencias significativas en el ingreso per cápita promedio de las regiones de Coquimbo y del Maule (IC 95%=[−$61.347,$68.950]; p=0,885), pero que estos son significativamente menores al ingreso per cápita promedio de la región de Atacama (Coquimbo: IC 95%=[$26.630,$242.874]; p=0,020; Maule: IC 95%=[$29.800,$248.523]; p=0,020).
+
+
+# EP 09
+
+Regresión lineal simple y múltiple
+Ejemplo de solución ejercicio prático N°9
+Enunciado
+Un estudio recolectó medidas anatómicas de 247 hombres y 260 mujeres (Heinz et al., 2003). El estudio incluyó nueve mediciones del esqueleto (ocho diámetros y una profundidad de hueso a hueso) y doce mediciones de grosor (diámetros de circunferencias) que incluyen el tejido.
+
+Con estos datos se pide construir un modelo de regresión lineal múltiple para predecir una variable respuesta, de acuerdo con las siguientes instrucciones:
+Definir la semilla a utilizar, que corresponde a los últimos cuatro dígitos del RUN (sin considerar el dígito verificador) del integrante de menor edad del equipo.
+Seleccionar una muestra de 100 mujeres (si la semilla es un número par) o 100 hombres (si la semilla es impar), y separar 70 casos para trabajar en la construcción de modelos y 30 para su evaluación en datos no vistos.
+Seleccionar de forma aleatoria ocho posibles variables predictoras.
+Seleccionar, de las otras variables, una que el equipo considere que podría ser útil para predecir la variable respuesta, justificando bien esta selección.
+Usando el entorno R y paquetes estándares, construir un modelo de regresión lineal simple con el predictor seleccionado en el paso anterior.
+Usando herramientas estándares para la exploración de modelos del entorno R, buscar entre dos y cinco predictores de entre las variables seleccionadas al azar en el punto 3, para agregar al modelo de regresión lineal simple obtenido en el paso 5.
+Evaluar la bondad de ajuste (incluyendo el análisis de casos atípicos y casos influyentes) y la generalidad (condiciones para RLM) de los modelos y “arreglarlos” en caso de que presenten algún problema.
+Evaluar el poder predictivo de los modelos en datos no utilizados para construirlos.
+
+
+Comencemos incluyendo los paquetes que usaremos en este script.
+
+```{r}
+library(car)
+library(dplyr)
+library(ggpubr)
+library(psych)
+library(tidyr)
+```
+
+Obtengamos los datos en formato ancho.
+
+```{r}
+# Leemos los datos
+datos <- read.csv2(file = "EP09 Datos.csv", stringsAsFactors = TRUE)
+```
+
+Obtengamos la muestra y separémosla en los conjuntos de entrenamiento y prueba, teniendo el cuidado de fijar una semilla para su reproductibilidad.
+
+```{r}
+set.seed(1111)
+datos <- datos |> filter(Gender == 1) |> select(-Gender) |> sample_n(100, replace = FALSE)
+datos_entren <- datos[1:70, ]
+datos_prueba <- datos[71:100, ]
+```
+
+Para este script de ejemplo, usaremos como variable respuesta los diámetros de las rodillas (Knees.diameter).
+
+Corresponde seleccionar al azar 8 posibles variables predictoras de este conjunto, teniendo cuidado de no seleccionar la variable de respuesta.
+
+```{r}
+nombre_respuesta <- "Knees.diameter"
+variables <- colnames(datos_entren)
+i_respuesta <- which(variables == nombre_respuesta)
+predictores <- sample(variables[-i_respuesta], 8, replace = FALSE)
+
+cat("Predictores seleccionados al azar:\n")
+cat(paste(predictores, collapse = "\n"))
+
+```
+
+
+Estos son los predictores seleccionados al azar para ser considerados en el modelo de regresión lineal múltiple que vamos a construir.
+
+Para seleccionar una de las variables restantes para construir un modelo de regresión lineal simple (RLS), vamos a evaluar su correlación con la variable respuesta.
+
+```{r}
+datos_resto <- datos_entren |> select(!all_of(predictores))
+i_respuesta_resto <- which(colnames(datos_resto) == nombre_respuesta)
+correlacion <- cor(datos_resto[-i_respuesta_resto], y = datos_resto[[nombre_respuesta]])
+
+cat("Correlación con la variable respuesta:\n")
+print(correlacion)
+```
+
+Asumiendo que el mejor predictor para un modelo de RLS es aquella variable con mayor correlación (directa o inversa) con la variable de respuesta, podemos determinar fácilmente nuestro predictor.
+
+```{r}
+i_mejor <- which(correlacion == max(abs(correlacion)))
+predictor <- rownames(correlacion)[i_mejor]
+
+cat("Variable más correlacionada con la variable respuesta:", predictor, "\n")
+```
+
+Variable más correlacionada con la variable respuesta: Wrists.diameter 
+Filtramos para quedarnos con las variables relevantes.
+
+```{r}
+datos_entren <- datos_entren |>
+  select(all_of(c(predictor, predictores, nombre_respuesta)))
+```
+
+Regresión lineal simple
+Demos entonces una mirada a los datos.
+
+```{r}
+p1 <- ggscatter(datos_entren, x = predictor, y = nombre_respuesta,
+                color = "steelblue", fill = "steelblue",
+                add = "reg.line", add.params = list(color = "red"))
+print(p1)
+```
+
+Este gráfico de dispersión parece mostrar una relación lineal positiva entre las variables.
+
+Obtengamos el modelo de regresión lineal simple.
+
+```{r}
+fmla <- formula(paste(nombre_respuesta, predictor, sep = " ~ "))
+rls <- lm(fmla, data = datos_entren)
+
+cat("Modelo de regresión lineal simple:\n")
+print(summary(rls))
+```
+
+F-statistic:  43.8 on 1 and 68 DF,  p-value: 6.86e-09 Podemos ver que el modelo de RLS obtenido explica alrededor del 40% de la varianza en los datos y que es significativamente mejor que simplemente usar la media (F(1,68)=43,8; p<0,001).
+
+Revisemos los gráficos de los residuos que genera el modelo.
+
+```{r}
+cat("Prueba de curvatura:\n")
+residualPlots(rls, type = "rstandard", terms = ~ 1, col = "steelblue", pch = 20, col.quad = "red")
+```
+
+Vemos que no hay un patrón identificable y que los residuos parecen repartirse de forma aleatoria arriba y abajo de la línea de regresión. La prueba de curvatura resultan no significativas, por lo que no podemos descartar que el diámetro de las muñecas se relaciona linealmente con el diámetro de las rodillas.
+
+Si tuviéramos dudas, podemos confirmar la normalidad de los residuos con un histograma y usando una prueba de normalidad.
+
+```{r}
+h_res <- gghistogram(data.frame(Residuos = resid(rls)), x = "Residuos", bins = 11,
+                     fill = "steelblue")
+print(h_res)
+```
+
+```{r}
+sw_res <- shapiro.test(resid(rls))
+cat("Test de normalidad de los residuos del modelo de RLS:")
+print(sw_res)
+```
+
+Si bien se observa cierta asimetría, no hay evidencia suficiente para descartar que los residuos siguen un comportamiento normal.
+
+Confirmemos que la varianza de los residuos se mantienen constante.
+
+```{r}
+cat("Prueba de varianza del error no constante:\n")
+ncvTest(rls)
+```
+
+No se puede descartar entonces que los residuos cumplan con la condición de homocedasticidad (χ(1)=0,720; p=0,396).
+
+Revisemos que los residuos se comportan de manera independiente como siguiere su gráfico.
+
+```{r}
+cat("Independencia de los residuos\n")
+print(durbinWatsonTest(rls))
+```
+
+Confirmamos que no es posible descartar que la condición de independencia no se esté cumpliendo en este modelo (D-W=2,004; p=0,972).
+
+Evaluemos ahora las estadísticas de influencia del modelo de RLS obtenido.
+
+```{r}
+cat("Rango para 95% de los residuos studentizados: ")
+cat("[", round(qt(0.05/2, nrow(datos_entren) - length(coef(rls)) - 1), 3), ", ", sep = "")
+cat(round(qt(1-0.05/2, nrow(datos_entren) - length(coef(rls)) - 1), 3), "]\n", sep = "")
+cat("Límite del apalancamiento:", round(2 * mean(hatvalues(rls)), 3), "\n")
+cat("Límite de la distancia de Cook:", round(3 * mean(cooks.distance(rls)), 3), "\n")
+
+rls_inf <- influencePlot(rls, id = list(n = 3))
+```
+
+```
+cat("\nCasos notorios para el modelo de RLS:\n")
+print(rls_inf)
+```
+
+El procedimiento detecta 8 casos que podrían estar influyendo excesivamente en los coeficientes del modelo de RLS obtenido. Revisemos si podemos identificar si estos casos potencialmente problemáticos están distorsionando el modelo.
+
+```{r}
+crPlots(rls, ylim = c(-2.3, 3.3),
+        col = "steelblue", pch = 20, col.lines = c("red", "steelblue"),
+        smooth = list(smoother = loessLine, span = 1),
+        id = list(method = "r", n = 8, cex = 0.7, location = "lr"))
+```
+
+Vemos que en realidad no parece haber un apalancamiento indebido de alguno de estos casos. Podríamos sospechar del caso 66, pero su potencial influencia parece contrarrestada por valores cercanos, pero por debajo de la línea de regresión. Para comprobar, podemos revisar cómo luce el modelo de RLS sin ese dato.
+
+```{r}
+rls2 <- lm(fmla, data = datos_entren[-66, ])
+crPlots(rls2, ylim = c(-2.3, 3.3),
+        col = "steelblue", pch = 20, col.lines = c("red", "steelblue"),
+        smooth = list(smoother = loessLine, span = 1),
+        id = list(method = "r", n = 8, cex = 0.7, location = "lr"))
+```
+
+Podemos ver que el nuevo modelo es prácticamente igual al original, por lo que no parece necesario quitar casos. Hagamos una conclusión entonces.
+
+El modelo obtenido parece confiable, ya que genera residuos aleatorios y no es posible descartar que sigan una distribución normal, usando un predictor que muestra una relación lineal con la variable respuesta. Tampoco se identifican casos que estén ejerciendo demasiada influencia en el modelo.
+
+Por otro lado, el modelo consigue una bondad de ajuste aceptable, pues explica alrededor del 40% de la variabilidad en la variable predicha, que es una reducción significativa (F(1;68)=43,8; p<0,001).
+
+
+
+Regresión lineal múltiple
+
+Para cumplir con la instrucción 6, vamos a utilizar la estrategia de regresión escalonada implementada en la función step(). Para eso usaremos nuestro modelo de RLS como modelo mínimo, y como modelo máximo el que utiliza todos los predictores que seleccionamos anteriormente de forma aleatoria.
+
+```{r}
+rlm_max_text <- paste(c(predictor, predictores), collapse = " + ")
+rlm_max_fmla <- formula(paste(nombre_respuesta, rlm_max_text, sep = " ~ "))
+rlm_max <- lm(rlm_max_fmla, data = datos_entren)
+
+rlm <- step(rls, scope = list(lower = rls, upper = rlm_max), direction = "both")
+```
+
+El modelo obtenido no cumple con lo solicitado en el enunciado, pues tiene un predictor más de lo permitido. Comencemos identificando un predictor para ser eliminado.
+
+```{r}
+drop1(rlm, test = "F")
+```
+
+Vemos que el menor cambio en AIC ocurre eliminando el predictor Ankle.Minimum.Girth, que lleva a un modelo equivalente en cuanto a variabilidad no explicada (F(1,62)=2,841;p=0,097
+). Quitemos esta variable.
+
+```{r}
+rlm <- update(rlm, . ~ . - Ankle.Minimum.Girth)
+```
+
+Evaluemos la confiabilidad del modelo de RLM conseguido. Comencemos revisando que no exista niveles inaceptables de multicolinealidad.
+
+```{r}
+cat("Factores de inflación de la varianza:\n")
+print(vif(rlm))
+cat("Estadísticos de tolerancia:\n")
+print(1 / vif(rlm))
+```
+ 
+Vemos que, en general, solo hay indicios de multicolinealidad moderada, pues solo dos predictores presentan valores de inflación de la varianza sobre 4. Probablemente estas dos variables están correlacionadas. Eliminemos la que presenta el mayor valor.
+
+```{r}
+rlm <- update(rlm, . ~ . - Hip.Girth)
+
+cat("Factores de inflación de la varianza:\n")
+print(vif(rlm))
+cat("Estadísticos de tolerancia:\n")
+print(1 / vif(rlm))
+```
+
+Muy bien, hemos eliminado gran parte de la multicolinealidad presente en el modelo anterior manteniendo 4 predictores nuevos agregados al modelo de RLS creado anteriormente.
+
+Revisemos los residuos que genera este modelo.
+
+```{r}
+cat("Prueba de curvatura:\n")
+residualPlots(rlm, type = "rstandard", terms = ~ 1, col = "steelblue", pch = 20, col.quad = "red")
+```
+
+Se ve cierta curvatura, pero que podría deberse a falta de observaciones en la muestra con diámetros de rodillas bajo los 18 o sobre los 21,5 cm. En el rango entre estos valores, no se ve un patrón preocupante, aunque existe cierta tendencia a patrones por sobre la línea de regresión. La prueba de curvatura también apunta en este sentido.
+
+Revisemos la normalidad de estos residuos.
+
+```{r}
+qq_res <- ggqqplot(data.frame(Residuos = resid(rlm)), x = "Residuos", color = "steelblue")
+print(qq_res)
+```
+
+```{r}
+sw_res <- shapiro.test(resid(rlm))
+cat("Test de normalidad de los residuos del modelo de RLM:")
+print(sw_res)
+```
+
+Vemos que los residuos parecen seguir una distribución normal, con algunos casos en el límite, pero que no son suficientes para permitir descartar que se cumple esta condición (W=0,982; p=0.413).
+
+Ahora verifiquemos la varianza e independencia de los residuos.
+
+```{r}
+cat("Prueba de varianza del error no constante:\n")
+ncvTest(rlm)
+
+cat("\nIndependencia de los residuos\n")
+print(durbinWatsonTest(rlm))
+```
+
+Con esto confirmamos que no es posible descartar que se están cumpliendo las condiciones de homogeneidad de la varianza (χ(1)=0,339; p=0,561) e independencia de los residuos (D-W=1,669; p=0,156).
+
+Revisemos si existen relaciones aproximadamente lineales entre los predictores y la variable de interés.
+
+```{r}
+crPlots(rlm,
+        col = "steelblue", pch = 20, col.lines=c("red", "steelblue"),
+        smooth = list(smoother=loessLine, span = 1),
+        id = list(method = "r", n = 3, cex = 0.7, location = "lr"))
+```
+
+Observamos que las relaciones parecen aproximadamente lineales, aunque alguna duda puede quedar con cómo se distribuyen los residuos al considerar la variable Waist.Girth (grosor de la cintura). También podemos notar que la recta de regresión parcial para este predictor tiene una pendiente muy baja, abriendo dudas de su aporte. Revisemos su contribución en relación a los otros predictores.
+
+```{r}
+cat("Modelo de RLM obtenido:\n")
+print(summary(rlm))
+```
+
+
+Esto confirma que esta variable no aporta al modelo. Siguiendo el principio de parsimonia, es mejor que lo quitemos (y hacer una revisión rápida que nada se altera demasiado al introducir este cambio).
+
+```{r}
+rlm <- update(rlm, . ~ . - Waist.Girth)
+
+cat("Modelo de RLM obtenido:\n")
+print(summary(rlm))
+
+cat("\nPrueba de curvatura:\n")
+residualPlots(rlm, type = "rstandard", terms = ~ 1, col = "steelblue", pch = 20, col.quad = "red")
+```
+
+```{r}
+cat("\nFactores de inflación de la varianza:\n")
+print(vif(rlm))
+
+cat("\nPrueba de varianza del error no constante:\n")
+ncvTest(rlm)
+
+cat("\nIndependencia de los residuos\n")
+print(durbinWatsonTest(rlm))
+```
+
+El nuevo modelo más simple parece mantener el comportamiento del modelo anterior.
+
+Revisemos ahora si existen casos demasiado influyentes utilizando el gráfico de influencia para identificarlos.
+
+```{r}
+cat("Rango para 95% de los residuos studentizados: ")
+cat("[", round(qt(0.05/2, nrow(datos_entren) - length(coef(rls)) - 1), 3), ", ", sep = "")
+cat(round(qt(1-0.05/2, nrow(datos_entren) - length(coef(rls)) - 1), 3), "]\n", sep = "")
+cat("Límite del apalancamiento:", round(2 * mean(hatvalues(rlm)), 3), "\n")
+cat("Límite de la distancia de Cook:", round(3 * mean(cooks.distance(rlm)), 3), "\n")
+
+rlm_inf <- influencePlot(rlm, id = list(n = 3))
+```
+
+
+```{r}
+cat("\nCasos notorios para el modelo de RLM:\n")
+print(rlm_inf)
+```
+
+Y el gráfico marginal de los valores predichos (fitted) para evaluar su influencia en el modelo.
+
+```{r}
+id_inf <- mmp(rlm,
+              col = "steelblue", pch = 20, col.line = c("steelblue", "red"),
+              smooth = list(smoother=loessLine, span = 1),
+              id = list(method = "r", n = 7, cex = 0.7, location = "lr"))
+```
+
+Vemos que, a pesar que los casos 4 y 66 curvan la tendencia de los datos hacia arriba, el modelo (línea roja segmentada) no parece estar visiblemente modificada por alguno de los casos notorios identificados.
+
+Notemos que en la función que genera el gráfico marginal, mmp() o su equivalente marginalModelPlot(), usan el argumento col.line para indicar los colores de las curvas ajustadas, primero para la curva suavizada de los datos y el segundo para la curva del modelo. Sin embargo, la función crPlots() que genera los gráficos de residuos por componente utiliza el parámetro col.lines (plural) para este propósito, debiendo indicar primero el color para la curva del modelo y luego el color para la curva suavizada de los datos. ¡Qué falta de consistencia! Es el precio de construir bibliotecas en comunidad…
+
+Finalmente, cometemos la bondad de ajuste que alcanza el modelo. Vemos que consigue una reducción significativa de la variabilidad aleatoria (F(4;65)=29,7; p<0,001), pues explica alrededor del 65% de la varianza de la variable de salida.
+
+Con todo este análisis podemos dar la siguiente conclusión.
+El modelo de RLM obtenido parece ser confiable, puesto que se ajusta bien a los datos observados, incluye predictores que muestran una relación lineal con la variable de respuesta, genera residuos que parecen seguir una distribución normal y sin problemas evidentes de heterocedasticidad o de dependencia entre ellos. Por otro lado, no hay casos que estén dominando el modelo.
+
+
+
+Comparación de los modelos
+Vimos que el modelo de RLS construido logra explicar alrededor del 40%
+ de la variabilidad en los datos, mientras que el RLM que tenemos logra explicar cerca del 65%
+ . Confirmemos si esta es una mejora significativa en la bondad de ajuste.
+
+```{r}
+cat("Comparación de los modelos de RLS y RLM:\n")
+print(anova(rls, rlm))
+```
+
+Confirmamos entonces que el modelo de RLM consigue una reducción significativa de la varianza no explicada en los datos con respecto al modelo de RLS (F(3,65)=15,623;p<0,001
+).
+
+Veamos si estos niveles de bondad de ajuste se reflejan en la calidad predictiva de los modelos conseguidos.
+
+Como se indica en el enunciado, es importante hacer esta evaluación con datos distintos a los usados en la construcción de los modelos. Por esta razón hemos construido los modelos usando 70%
+ de los datos disponibles, dejando el resto para hacer esta evaluación. Así, podemos comparar las predicciones que hacen con datos vistos (los de entrenamiento) y no vistos (los de prueba).
+
+```{r}
+rls_rmse_entre <- sqrt(mean(resid(rls) ** 2))
+rls_preds <- predict(rls, datos_prueba)
+rls_res_prueba <- datos_prueba[[nombre_respuesta]] - rls_preds
+rls_rmse_prueba <- sqrt(mean(rls_res_prueba ** 2))
+rls_pct_cambio <- ((rls_rmse_prueba - rls_rmse_entre) / rls_rmse_entre) * 100
+
+rlm_rmse_entre <- sqrt(mean(resid(rlm) ** 2))
+rlm_preds <- predict(rlm, datos_prueba)
+rlm_res_prueba <- datos_prueba[[nombre_respuesta]] - rlm_preds
+rlm_rmse_prueba <- sqrt(mean(rlm_res_prueba ** 2))
+rlm_pct_cambio <- ((rlm_rmse_prueba - rlm_rmse_entre) / rlm_rmse_entre) * 100
+
+cat(sprintf("Resumen de la variable de salida (%s):\n", nombre_respuesta))
+print(describe(datos |> pull(all_of(nombre_respuesta)), skew = FALSE))
+cat("\n")
+cat("Rendimiento del modelo de RLS:\n")
+cat(sprintf("RMSE para el conjunto de entrenamiento: %.3f\n", rls_rmse_entre))
+cat(sprintf("RMSE para el conjunto de prueba: %.3f\n", rls_rmse_prueba))
+cat(sprintf("Cambio en el error: %.1f%%\n", rls_pct_cambio))
+cat("\n")
+cat("Rendimiento del modelo de RLM:\n")
+cat(sprintf("RMSE para el conjunto de entrenamiento: %.3f\n", rlm_rmse_entre))
+cat(sprintf("RMSE para el conjunto de prueba: %.3f\n", rlm_rmse_prueba))
+cat(sprintf("Cambio en el error: %.1f%%\n", rlm_pct_cambio))
+```
+
+Resumen de la variable de salida (Knees.diameter):
+   vars   n  mean   sd median  min max range   se
+X1    1 100 19.72 1.18  19.55 17.3  23   5.7 0.12
+
+Rendimiento del modelo de RLS:
+RMSE para el conjunto de entrenamiento: 0.927
+RMSE para el conjunto de prueba: 1.138
+Cambio en el error: 22.7%
+
+Rendimiento del modelo de RLM:
+RMSE para el conjunto de entrenamiento: 0.707
+RMSE para el conjunto de prueba: 1.000
+Cambio en el error: 41.5%
+Podemos observar que, efectivamente, el modelo de RLM obtiene menores tasas de error que el modelo de RLS. Sin embargo, esta disminución es más acentuada en los datos de entrenamiento y no se exhibe de igual magnitud en los de prueba. Por otro lado, un error de ±1,0
+ podría ser alto si se considera que el rango de la variable de salida (17,3
+–23,0
+) es de solo 5,7
+. Así, podemos concluir lo siguiente.
+
+El modelo de RLM logra mejorar el rendimiento del modelo de RLS pero hay indicios de sobreajuste en él, ya que el error aumenta más de un 40%
+ al pasar de datos vistos a datos no vistos. La calidad predictiva del modelo tampoco parece ser muy buena.
+
+A pesar de que este modelo de RLM resultó confiable, parece tener problemas de generalización y calidad predictiva.
+
+Lo que correspondería entonces es analizar la eliminación de uno o dos de los predictores y evaluar nuevamente la confiabilidad y el poder predictivo del nuevo modelo de RLM. 
+
+
+
+
+# EP 10
+
+Regresión logística simple y múltiple
+
+Enunciado
+Para este ejercicio usaremos los datos de medidas anatómicas recolectados por Heinz et al. (2003) que ya conocimos en el ejercicio práctico anterior (disponibles en el archivo “EP09 Datos.csv”). Como en este case se requiere de una variable dicotómica, vamos a realizar lo siguiente:
+
+Crear la variable dicotómica TRG (¿tiene rodillas gruesas?) con valor “sí” cuando los diámetros de las rodillas sobrepasan los 19,0
+ cm y “no” en caso contrario.
+Se pide construir un modelo de regresión logística para predecir la variable TRG, de acuerdo con las siguientes instrucciones:
+
+Definir la semilla a utilizar, que corresponde a los últimos cuatro dígitos del RUN (sin considerar el dígito verificador) del integrante de mayor edad del equipo.
+Seleccionar una muestra de 150 mujeres (si la semilla es un número par) o 150 hombres (si la semilla es impar), asegurando que la mitad tenga rodillas gruesas y la otra mitad no. Dividir esta muestra en dos conjuntos: los datos de 100 personas (50 de ellas con rodillas gruesas) para utilizar en la construcción de los modelos y 50 personas (25 de ellas con rodillas gruesas) para poder evaluarlos.
+Recordar las ocho posibles variables predictoras seleccionadas de forma aleatoria en el ejercicio anterior.
+Seleccionar, de las otras variables, una que el equipo considere que podría ser útil para predecir la clase TRG, justificando bien esta selección (idealmente con literatura).
+Usando el entorno R (pero no del paquete caret), construir un modelo de regresión logística con el predictor seleccionado en el paso anterior y utilizando la muestra obtenida.
+Usando herramientas para la exploración de modelos del entorno R (pero no del paquete caret), buscar entre dos y cinco predictores de entre las variables seleccionadas al azar, recordadas en el punto 3, para agregar al modelo obtenido en el paso 5.
+Evaluar la confiabilidad de los modelos (i.e. que tengan un buen nivel de ajuste y son generalizables) y “arreglarlos” en caso de que tengan algún problema.
+Usando herramientas del entorno R (pero no del paquete caret), evaluar el poder predictivo de los modelos, con los datos que no se incluyeron en su construcción, en términos de sensibilidad y especificidad.
+
+
+Comencemos Incluyendo los paquetes que usaremos en este script.
+
+```{r}
+library(car)
+library(dplyr)
+library(ggpubr)
+library(gridExtra)
+library(leaps)
+library(tidyr)
+```
+Obtengamos los datos en formato ancho.
+
+```{r}
+set.seed(1111)
+datos <- read.csv2(file = "EP09 Datos.csv", stringsAsFactors = TRUE)
+```   
+
+Generemos las variables nuevas requeridas para este ejercicio.
+
+```{r}
+datos_ext <- datos |> 
+  mutate(TRG = ifelse(Knees.diameter < 19.0, "no", "sí"))
+datos_ext[["Gender"]] <- factor(datos_ext[["Gender"]])
+datos_ext[["TRG"]] <- factor(datos_ext[["TRG"]])
+```
+
+Obtenemos la muestra como indican las instrucciones 1 y 2, teniendo cuidado de desordenar los conjuntos de datos para que no queden juntos todos los casos con la misma clase, puesto que introduce artificialmente dependencia entre los datos.
+
+```{r}
+muestra_a <- datos_ext |> filter(Gender == 1 & TRG == "no") |>
+  sample_n(75, replace = FALSE)
+muestra_b <- datos_ext |> filter(Gender == 1 & TRG == "sí") |>
+  sample_n(75, replace = FALSE)
+
+i_train <- sample(1:75, 50)
+muestra_train <- rbind(muestra_a[i_train, ], muestra_b[i_train, ]) |>
+  select(-Gender) |> sample_frac(1L)
+muestra_test <- rbind(muestra_a[-i_train, ], muestra_b[-i_train, ]) |>
+  select(-Gender) |> sample_frac(1L)
+```
+
+Verificamos que no cometimos algún error con las muestras
+
+```{r}
+stopifnot(all(muestra_train$Id == unique(muestra_train$Id)))
+stopifnot(all(muestra_test$Id == unique(muestra_test$Id)))
+stopifnot(!any(muestra_train$Id %in% muestra_test))
+```
+
+
+Siguiendo la instrucción 3, recordemos las ocho posibles variables predictoras seleccionadas de forma aleatoria en el ejercicio anterior.
+
+```{r}
+nombre_respuesta <- "TRG"
+predictores <- c("Ankles.diameter", "Calf.Maximum.Girth", "Waist.Girth", "Bitrochanteric.diameter",
+                 "Ankle.Minimum.Girth", "Hip.Girth", "Biiliac.diameter", "Age")
+```
+
+Regresión logística simple
+
+Corresponde seleccionar una de las otras variables (instrucción 4) que podría ser útil para predecir la variable respuesta. Para esto miremos cómo se relacionan las otras variables con la variable de respuesta, sin considerar la variable Gender que, por diseño, tiene solo un valor.
+
+```{r}
+# Obtiene relaciones entre todos los pares de variables
+otras <- colnames(muestra_train)[! colnames(muestra_train) %in% predictores]
+p1_dfl <- muestra_train |> select(all_of(otras)) |>
+  pivot_longer(-all_of(nombre_respuesta), names_to = "Variable", values_to = "Valor") |>
+  mutate(Variable = factor(Variable))
+p1 <- ggboxplot(p1_dfl, x = "Variable", y = "Valor", color = nombre_respuesta)
+p1 <- p1 +  facet_wrap( ~ Variable, ncol = 4, scales = "free") 
+print(p1)
+```   
+
+
+Por supuesto, la variable Knees.diameter es la que exhibe menor traslape entre las clases. Es más, no existe traslape para esta variable, por lo que nos permite clasificar los casos sin errores. Como vimos, esto presenta problemas si buscamos un modelo de regresión logística, ya que se trata de separación perfecta.
+
+```{r}
+p2_dfl <- muestra_train |> select(Knees.diameter, TRG) |>
+  mutate(Id = 1:n())
+p2 <- ggscatter(p2_dfl, x = "Id", y = "Knees.diameter", color = nombre_respuesta)
+p2 <- p2 + geom_hline(yintercept = 18.95, linetype = "dashed", color = "steelblue")
+p2 <- p2 + theme(axis.title.x = element_blank(), axis.text.x = element_blank(),
+                 axis.ticks.x = element_blank())
+print(p2)
+```
+
+Veamos cómo falla la construcción del modelo.
+
+```{r}
+rlogit_sep_perf <- glm(TRG ~ Knees.diameter, data = muestra_train,
+                       family = binomial(link = "logit"))
+```
+
+De este modo, tenemos que elegir otra variable para nuestro modelo de regresión logística simple (RLogitS). Mirando el gráfico de cajas, parece haber varias opciones: Forearm.Girth, Knee.Girth, Shoulder.Girth, Weight, Wrist.Minimum.Girth, y Wrists.diameter parecen tener niveles de solapamiento similares. Pero esta última variable parece tener la líneas de las medianas más separadas, por lo que la escogeremos para cumplir con la instrucción 5.
+
+```{r}
+predictor <- "Wrists.diameter"
+rlogits_fmla <- formula(paste(nombre_respuesta, predictor, sep = " ~ "))
+
+rlogits <- glm(rlogits_fmla, data = muestra_train,
+               family = binomial(link = "logit"))
+
+cat("Modelo de regresión logística simple\n")
+print(summary(rlogits))
+```
+
+
+
+Regresión logística múltiple
+
+Para cumplir con la instrucción 6, vamos a utilizar regresión escalonada hacia adelante.
+
+```{r}
+add1(rlogits, scope = c(predictor, predictores))
+```
+
+
+Podemos ver que la mejor opción es extender nuestro modelo simple es agregar la variable Ankles.diameter como predictor. Veamos el siguiente paso.
+
+
+```{r}
+rlogitm <- update(rlogits, . ~ . + Ankles.diameter)
+
+add1(rlogitm, scope = c(predictor, predictores))
+```
+
+
+En este paso podemos observar que la variable Calf.Maximum.Girth produce una leve disminución de la desviación, pero una pequeña alza en el AIC. Dado que se nos pide agregar al menos dos variables al modelo simple, la agregamos a los predictores del modelo.
+
+```{r}
+rlogitm <- update(rlogitm, . ~ . + Calf.Maximum.Girth)
+
+add1(rlogitm, scope = c(predictor, predictores))
+```
+
+
+Ahora vemos que la variable Waist.Girth produce una pequeña baja en la desviación manteniendo el AIC casi intacto. Agreguémosla al modelo.
+
+```{r}
+rlogitm <- update(rlogitm, . ~ . + Waist.Girth)
+
+add1(rlogitm, scope = c(predictor, predictores))
+```
+
+Ahora sucede algo similar con Bitrochanteric.diameter. Siguiendo el mismo criterio, la añadimos al modelo.
+
+```{r}
+rlogitm <- update(rlogitm, . ~ . + Bitrochanteric.diameter)
+
+add1(rlogitm, scope = c(predictor, predictores))
+```
+
+
+Vemos que ahora cualquier otro predictor del conjunto seleccionado al azar genera un aumento del AIC, por lo que detenemos la búsqueda. Veamos el modelo obtenido.
+
+```{r}
+cat("Modelo de regresión logística múltiple con 5 predictores\n")
+print(summary(rlogitm))
+```
+Modelo de regresión logística múltiple con 5 predictores
+
+Call:
+glm(formula = TRG ~ Wrists.diameter + Ankles.diameter + Calf.Maximum.Girth + 
+    Waist.Girth + Bitrochanteric.diameter, family = binomial(link = "logit"), 
+    data = muestra_train)
+
+Coefficients:
+                         Estimate Std. Error z value Pr(>|z|)    
+(Intercept)             -37.63732    8.19865  -4.591 4.42e-06 ***
+Wrists.diameter           1.16015    0.52231   2.221  0.02634 *  
+Ankles.diameter           1.07774    0.36446   2.957  0.00311 ** 
+Calf.Maximum.Girth        0.18931    0.13418   1.411  0.15828    
+Waist.Girth              -0.07325    0.03935  -1.861  0.06270 .  
+Bitrochanteric.diameter   0.25871    0.18852   1.372  0.16997    
+---
+Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
+
+(Dispersion parameter for binomial family taken to be 1)
+
+    Null deviance: 138.629  on 99  degrees of freedom
+Residual deviance:  95.693  on 94  degrees of freedom
+AIC: 107.69
+
+Number of Fisher Scoring iterations: 5
+
+Como era de esperarse, por las leves disminuciones en desviación, los últimos 3 predictores no aportan significativamente al modelo. Por el principio de parsimonia, deberíamos eliminar 2 de ellas para cumplir con el lo solicitado en el enunciado. Quitemos las últimas 2 variables agregadas.
+
+```{r}
+rlogitm <- update(rlogitm, . ~ . - Waist.Girth - Bitrochanteric.diameter)
+
+cat("Modelo de regresión logística múltiple con 3 predictores\n")
+print(summary(rlogitm))
+```
+
+Modelo de regresión logística múltiple con 3 predictores
+print(summary(rlogitm))
+
+Call:
+glm(formula = TRG ~ Wrists.diameter + Ankles.diameter + Calf.Maximum.Girth, 
+    family = binomial(link = "logit"), data = muestra_train)
+
+Coefficients:
+                   Estimate Std. Error z value Pr(>|z|)    
+(Intercept)        -31.0752     6.6802  -4.652 3.29e-06 ***
+Wrists.diameter      0.8920     0.4866   1.833  0.06675 .  
+Ankles.diameter      1.0832     0.3530   3.068  0.00215 ** 
+Calf.Maximum.Girth   0.1483     0.1128   1.315  0.18839    
+---
+Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
+
+(Dispersion parameter for binomial family taken to be 1)
+
+    Null deviance: 138.629  on 99  degrees of freedom
+Residual deviance:  99.698  on 96  degrees of freedom
+AIC: 107.7
+
+Number of Fisher Scoring iterations: 5
+
+
+Confiabilidad de los modelos
+Ajuste
+Comencemos revisando la bondad de ajuste de los modelos.
+
+```{r}
+rlogits_lrt <- anova(rlogits, test = "LRT")
+rlogitm_lrt <- anova(rlogits, rlogitm, test = "LRT")
+
+cat("Bondad de ajuste del modelo univariado:\n")
+print(rlogits_lrt)
+cat("\n")
+cat("Bondad de ajuste del modelo multivariado:\n")
+print(rlogitm_lrt)
+```
+
+Bondad de ajuste del modelo univariado:
+Analysis of Deviance Table
+
+Model: binomial, link: logit
+
+Response: TRG
+
+Terms added sequentially (first to last)
+
+                Df Deviance Resid. Df Resid. Dev  Pr(>Chi)    
+NULL                               99     138.63              
+Wrists.diameter  1   21.145        98     117.48 4.258e-06 ***
+---
+Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
+
+Bondad de ajuste del modelo multivariado:
+Analysis of Deviance Table
+
+Model 1: TRG ~ Wrists.diameter
+Model 2: TRG ~ Wrists.diameter + Ankles.diameter + Calf.Maximum.Girth
+  Resid. Df Resid. Dev Df Deviance  Pr(>Chi)    
+1        98    117.484                          
+2        96     99.698  2   17.787 0.0001373 ***
+---
+Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
+Vemos que el modelo simple obtiene una reducción significativa de la devianza (χ2(1)=21,145; p<0.001) respecto del modelo nulo, y que el modelo múltiple logra reducir significativamente este estadístico respecto del modelo simple (χ2(2)=17,787; p<0.001). Bajo este criterio entonces, ambos modelos logran una buena bondad de ajsute.
+
+Multicolinealidad
+Aseguremos que esta falta de aporte no esté también introduciendo problemas de multicolinealidad.
+
+```{r}
+cat("Factores de inflación de la varianza:\n")
+print(vif(rlogitm))
+cat("\n")
+cat("Valores de tolerancia:\n")
+print(1 / vif(rlogitm))
+```
+Factores de inflación de la varianza:
+   Wrists.diameter    Ankles.diameter Calf.Maximum.Girth 
+          1.111214           1.094437           1.143815 
+
+Valores de tolerancia:
+   Wrists.diameter    Ankles.diameter Calf.Maximum.Girth 
+         0.8999170          0.9137114          0.8742675 
+¡Fantástico! Podemos notar que todos los factores de inflación de la varianza están lejos del límite de 10
+ y ninguna tolerancia es menos a 0,2
+, lo que indicaría que no hay presencia de multicolinealidad severa.
+
+Relaciones lineales
+Revisemos que se cumple la condición de relaciones lineales entre los predictores y la respuesta transformada, para lo que usaremos la función avPlots() del paquete car.
+```{r}
+avPlots(rlogitm, layout = c(1, 3),
+        col = "steelblue", pch = 20, col.lines = "red",
+        main = "Regresiones parciales",
+        id = list(n = 3, cex = 1.2, location = "lr"))
+```
+
+En estos gráficos podemos observar varias cosas interesantes. Primero, que las relaciones de la variable de salida con el diámetro de las muñecas (Wrists.diameter) y el grosor máximo de las pantorrillas (Calf.Maximum.Girth) parecen lineales, aunque con una pendiente bastante reducida. Por otro lado, la pendiente con el diámetro de los tobillos (Ankles.diameter) es más pronunciada, pero hay un comportamiento extraño de los residuos parciales que tienden a agruparse en dos nubes. La recta parece apalancada por los valores más extremos en esta variable, pues una línea prácticamente horizontal representaría mejor a la mayoría de los datos.
+
+Casos sobre influyentes
+Revisemos estas sospechas haciendo uso de la función influencePlot() provista por el paquete car que, recordemos, representa de forma gráfica tres métricas de influencia: residuos studentizados versus apalancamiento (hat values) y círculos cuyas áreas son proporcionales a la distancia de Cook.
+
+```{r}
+rlogits_inf_estad <- influencePlot(rlogitm, fill.col = "steelblue",
+                                   scale = 5, id = list(n = 3))
+
+
+cat("Límites para el modelo de RLogitS:\n")
+cat("Rango para 95% de los residuos studentizados: ")
+cat("[", round(qt(0.05/2, nrow(muestra_train) - length(coef(rlogitm)) - 1), 3), ", ", sep = "")
+cat(round(qt(1-0.05/2, nrow(muestra_train) - length(coef(rlogitm)) - 1), 3), "]\n", sep = "")
+cat("Límite del apalancamiento:", round(2 * mean(hatvalues(rlogitm)), 3), "\n")
+cat("Límite de la distancia de Cook:", round(3 * mean(cooks.distance(rlogitm)), 3), "\n")
+cat("Casos notorios para el modelo de RLogitS:\n")
+print(rlogits_inf_estad)
+```
+
+Límites para el modelo de RLogitS:
+Rango para 95% de los residuos studentizados: [-1.985, 1.985]
+Límite del apalancamiento: 0.08 
+Límite de la distancia de Cook: 0.033 
+Casos notorios para el modelo de RLogitS:
+      StudRes        Hat      CookD
+8   -2.726169 0.01883045 0.14601719
+46  -1.156655 0.14621202 0.04110867
+58  -1.222549 0.10308072 0.03184470
+231  2.270636 0.02687771 0.07384157
+1   -2.209810 0.03898680 0.09122136
+11  -1.123885 0.10229049 0.02529247
+Podemos observar que ninguno de los residuos destacados está fuera del rango seguro en todos los criterios. Tal vez el caso 1 podría considerarse algo problemático, pues exhibe una distancia de Cook muy superior (más de 4 veces) al del resto y tiene los valores más altos para los otros criterios (con un empate en apalancamiento con el caso 441). Pero en el gráfico de regresiones parciales se puede apreciar que este caso no parece realmente modificar la recta ajustada parcialmente a cada predictor, por lo que no parece que sea necesario sacarlo del ajuste. Por otro lado, los casos 431 y 661, que parecían preocupantes en la regresión parcial del diámetro de los tobillos, ni siquiera aparecen como preocupantes en términos de los criterios usados en la figura anterior.
+
+Independencia de los residuos
+Confirm
+emos que no existe dependencia entre los residuos generados por el modelo de RLogitS.
+
+```{r}
+cat("Prueba de la independencia de los residuos para el modelo de RLogitS:\n")
+print(durbinWatsonTest(rlogits))
+```
+
+Prueba de la independencia de los residuos para el modelo de RLogitS:
+ lag Autocorrelation D-W Statistic p-value
+   1      0.08844082      1.808878   0.278
+ Alternative hypothesis: rho != 0
+Vemos que no hay razones para sospechar que los residuos no sean independientes para este modelo.
+
+Confirmemos que esto también se da para el modelo de RLogitM.
+
+cat("Prueba de la independencia de los residuos para el modelo de RLogitM:\n")
+print(durbinWatsonTest(rlogitm))
+Prueba de la independencia de los residuos para el modelo de RLogitM:
+ lag Autocorrelation D-W Statistic p-value
+   1       0.1327261      1.725419   0.188
+ Alternative hypothesis: rho != 0
+¡Estupendo! No hay evidencia que nos indique falta de independencia de los residuos en este modelo tampoco.
+
+Resultado
+Concluimos que tanto el modelo de RLogitS como el de RLogitM son relativamente confiables, puesto que los predictores muestras asociaciones lineales con la variable de respuesta y no hay patrones visibles ni evidencia de dependencia entre los residuos. Tampoco se identificaron casos que estén ejerciendo demasiada influencia en el modelo, aunque hay dos o tres casos que podrían ser preocupantes.
+
+
+
+
+Poder predictivo
+La instrucción 8 nos pide evaluar la calidad predictiva de los modelos en términos de sensibilidad y especificidad (pero sin usar el paquete caret).
+
+Comenzamos obteniendo las predicciones del modelo de RLogitS, tanto en los datos de entrenamiento como en los datos de prueba. Para esto, usaremos el umbral por defecto, y reordenamos las clases para que la clase positiva sea sí.
+
+```{r}
+umbral <- 0.5
+
+rlogits_probs_train <- fitted(rlogits)
+rlogits_preds_train <- sapply(rlogits_probs_train,
+function (p) ifelse (p < umbral, "no", "sí"))
+rlogits_preds_train <- factor(rlogits_preds_train, levels = rev(levels(muestra_train[[nombre_respuesta]])))
+
+rlogits_probs_test <- predict(rlogits, muestra_test, type = "response")
+rlogits_preds_test <- sapply(rlogits_probs_test,
+function (p) ifelse (p < umbral, "no", "sí"))
+rlogits_preds_test <- factor(rlogits_preds_test, levels = rev(levels(muestra_train[[nombre_respuesta]])))
+```
+
+Teniendo las predicciones, podemos formar las matrices de confusión y calcular la sensibilidad y especificidad (teniendo cuidado de también dar vuelta las clases en los datos observados).
+
+```{r}
+rlogits_obs_train <- factor(rlogits[["data"]][names(fitted(rlogits)), nombre_respuesta], levels = rev(levels(muestra_train[[nombre_respuesta]])))
+rlogits_obs_test <- factor(muestra_test[[nombre_respuesta]], levels = rev(levels(muestra_train[[nombre_respuesta]])))
+
+rlogits_train_conf_mat <- table(Predicho = rlogits_preds_train, Observado = rlogits_obs_train)
+rlogits_test_conf_mat <- table(Predicho = rlogits_preds_test, Observado = rlogits_obs_test)
+
+cat("Matriz de confusión del modelo de RLogitS en datos de entrenamiento:\n")
+print(rlogits_train_conf_mat)
+cat("\n")
+cat("Matriz de confusión del modelo de RLogitS en datos de prueba:\n")
+print(rlogits_test_conf_mat)
+```
+
+Matriz de confusión del modelo de RLogitS en datos de entrenamiento:
+        Observado
+Predicho sí no
+      sí 34 15
+      no 16 35
+
+Matriz de confusión del modelo de RLogitS en datos de prueba:
+        Observado
+Predicho sí no
+      sí 19  9
+      no  6 16
+Obtengamos la exactitud, sensibilidad y especificidad en cada caso y comparemos sus diferencias al pasar de datos vistos por el modelo a no vistos.
+
+```{r}
+rlogits_train_exa <- (rlogits_train_conf_mat[1, 1] + rlogits_train_conf_mat[2, 2]) /
+sum(rlogits_train_conf_mat)
+rlogits_train_sen <- rlogits_train_conf_mat[1, 1] /
+sum(rlogits_train_conf_mat[, 1])
+rlogits_train_esp <- rlogits_train_conf_mat[2, 2] /
+sum(rlogits_train_conf_mat[, 2])
+
+rlogits_test_exa <- (rlogits_test_conf_mat[1, 1] + rlogits_test_conf_mat[2, 2]) /
+sum(rlogits_test_conf_mat)
+rlogits_test_sen <- rlogits_test_conf_mat[1, 1] /
+sum(rlogits_test_conf_mat[, 1])
+rlogits_test_esp <- rlogits_test_conf_mat[2, 2] /
+sum(rlogits_test_conf_mat[, 2])
+
+rlogits_cambio_exa <- (rlogits_train_exa - rlogits_test_exa) / rlogits_test_exa * 100
+rlogits_cambio_sen <- (rlogits_train_sen - rlogits_test_sen) / rlogits_test_sen * 100
+rlogits_cambio_esp <- (rlogits_train_esp - rlogits_test_esp) / rlogits_test_esp * 100
+
+cat("Rendimiento del modelo de RLogitS en datos de entrenamiento:\n")
+cat(sprintf("    Exactitud: %.2f\n", rlogits_train_exa))
+cat(sprintf(" Sensibilidad: %.2f\n", rlogits_train_sen))
+cat(sprintf("Especificidad: %.2f\n", rlogits_train_esp))
+cat("\n")
+cat("Rendimiento del modelo de RLogitS en datos de prueba:\n")
+cat(sprintf("    Exactitud: %.2f\n", rlogits_test_exa))
+cat(sprintf(" Sensibilidad: %.2f\n", rlogits_test_sen))
+cat(sprintf("Especificidad: %.2f\n", rlogits_test_esp))
+cat("\n")
+cat("Cambio porcentual en el rendimiento del modelo de RLogitS:\n")
+cat(sprintf("    Exactitud: %7.2f%%\n", rlogits_cambio_exa))
+cat(sprintf(" Sensibilidad: %7.2f%%\n", rlogits_cambio_sen))
+cat(sprintf("Especificidad: %7.2f%%\n", rlogits_cambio_esp))
+```
+
+
+Vemos que la exactitud no sufre un cambio importante, pero sí se observa un aumnento en la sensibilidad y una caída de la especificidad. En general, parece que el modelo se comporta bien con datos no vistos.
+
+Repitamos el análisis con el modelo múltiple.
+
+```{r}
+rlogitm_probs_train <- fitted(rlogitm)
+rlogitm_preds_train <- sapply(rlogitm_probs_train,
+function (p) ifelse (p < umbral, "no", "sí"))
+rlogitm_preds_train <- factor(rlogitm_preds_train, levels = rev(levels(muestra_train[[nombre_respuesta]])))
+
+rlogitm_probs_test <- predict(rlogitm, muestra_test, type = "response")
+rlogitm_preds_test <- sapply(rlogitm_probs_test,
+function (p) ifelse (p < umbral, "no", "sí"))
+rlogitm_preds_test <- factor(rlogitm_preds_test, levels = rev(levels(muestra_train[[nombre_respuesta]])))
+
+rlogitm_obs_train <- factor(rlogitm[["data"]][names(fitted(rlogitm)), nombre_respuesta],
+                            levels = rev(levels(muestra_train[[nombre_respuesta]])))
+rlogitm_obs_test <- factor(muestra_test[[nombre_respuesta]],
+                           levels = rev(levels(muestra_train[[nombre_respuesta]])))
+
+rlogitm_train_conf_mat <- table(Predicho = rlogitm_preds_train, Observado = rlogitm_obs_train)
+rlogitm_test_conf_mat <- table(Predicho = rlogitm_preds_test, Observado = rlogitm_obs_test)
+
+cat("Matriz de confusión del modelo de RLogitM en datos de entrenamiento:\n")
+print(rlogitm_train_conf_mat)
+cat("\n")
+cat("Matriz de confusión del modelo de RLogitM en datos de prueba:\n")
+print(rlogitm_test_conf_mat)
+```
+
+Obtengamos las métricas de desempeño y comparémoslas al pasar de datos vistos a los no vistos.
+
+```{r}
+rlogitm_train_exa <- (rlogitm_train_conf_mat[1, 1] + rlogitm_train_conf_mat[2, 2]) /
+sum(rlogitm_train_conf_mat)
+rlogitm_train_sen <- rlogitm_train_conf_mat[1, 1] /
+sum(rlogitm_train_conf_mat[, 1])
+rlogitm_train_esp <- rlogitm_train_conf_mat[2, 2] /
+sum(rlogitm_train_conf_mat[, 2])
+
+rlogitm_test_exa <- (rlogitm_test_conf_mat[1, 1] + rlogitm_test_conf_mat[2, 2]) /
+sum(rlogitm_test_conf_mat)
+rlogitm_test_sen <- rlogitm_test_conf_mat[1, 1] /
+sum(rlogitm_test_conf_mat[, 1])
+rlogitm_test_esp <- rlogitm_test_conf_mat[2, 2] /
+sum(rlogitm_test_conf_mat[, 2])
+
+rlogitm_cambio_exa <- (rlogitm_train_exa - rlogitm_test_exa) / rlogitm_test_exa * 100
+rlogitm_cambio_sen <- (rlogitm_train_sen - rlogitm_test_sen) / rlogitm_test_sen * 100
+rlogitm_cambio_esp <- (rlogitm_train_esp - rlogitm_test_esp) / rlogitm_test_esp * 100
+
+cat("Rendimiento del modelo de RLogitM en datos de entrenamiento:\n")
+cat(sprintf("    Exactitud: %.2f\n", rlogitm_train_exa))
+cat(sprintf(" Sensibilidad: %.2f\n", rlogitm_train_sen))
+cat(sprintf("Especificidad: %.2f\n", rlogitm_train_esp))
+cat("\n")
+cat("Rendimiento del modelo de RLogitM en datos de prueba:\n")
+cat(sprintf("    Exactitud: %.2f\n", rlogitm_test_exa))
+cat(sprintf(" Sensibilidad: %.2f\n", rlogitm_test_sen))
+cat(sprintf("Especificidad: %.2f\n", rlogitm_test_esp))
+cat("\n")
+cat("Cambio porcentual en el rendimiento del modelo de RLogitM:\n")
+cat(sprintf("    Exactitud: %7.2f%%\n", rlogitm_cambio_exa))
+cat(sprintf(" Sensibilidad: %7.2f%%\n", rlogitm_cambio_sen))
+cat(sprintf("Especificidad: %7.2f%%\n", rlogitm_cambio_esp))
+```
+Rendimiento del modelo de RLogitM en datos de entrenamiento:
+    Exactitud: 0.80
+ Sensibilidad: 0.78
+Especificidad: 0.82
+
+Rendimiento del modelo de RLogitM en datos de prueba:
+    Exactitud: 0.66
+ Sensibilidad: 0.72
+Especificidad: 0.60
+
+Cambio porcentual en el rendimiento del modelo de RLogitM:
+    Exactitud:   21.21%
+ Sensibilidad:    8.33%
+Especificidad:   36.67%
+¡Oh! Aquí sí hay una caída notoria de todas las métricas de desempeño cuando el modelo hace predicciones con datos no vistos.
+
+Resultado
+Ambos modelos muestran un calidad predictiva moderada, con una sensibilidad sobre 70%
+ y una especificidad sobre 60%
+ en datos no utilizados para construirlos.
+
+El modelo simple muestra cierta estabilidad en el rendimiento al pasar de datos conocidos a desconocidos. Sin embargo, el modelo de RLogM parece tener problemas de generalización puesto que presenta una caída importante en el rendimiento al ser aplicado a datos no vistos. Esto es una indicación de sobreajuste y habría que explorar la eliminación de algún predictor, aunque eso nos haría incumplir con lo solicitado en el enunciado.
+
+
+
+
+# EP 11
+
+Herramientas avanzadas para modelos de regresión
+Ejemplo de solución ejercicio prático N°11
+Enunciado
+Para este ejercicio usaremos los datos de medidas anatómicas recolectados por Heinz et al. (2003) que ya hemos utilizado, con la adición de la variable TRG considerada en el ejercicio práctico anterior.
+
+En este contexto realizaremos las siguientes actividades:
+
+Definir la semilla a utilizar, que corresponde a los primeros cinco dígitos del RUN del integrante de mayor edad del equipo.
+Seleccionar una muestra de 100 personas, asegurando que la mitad tenga rodillas gruesas (TRG == "sí") y la otra mitad no (TRG == "no").
+Usando las herramientas del paquete leaps, realizar una búsqueda exhaustiva para seleccionar entre dos y ocho predictores que ayuden a estimar el diámetro (promedio) de las rodillas (Knees.diameter), obviamente sin considerar la nueva variable TRG, y luego utilizar las funciones del paquete caret para construir un modelo de regresión lineal múltiple con los predictores escogidos y evaluarlo usando bootstrapping.
+Haciendo un poco de investigación sobre el paquete caret, en particular cómo hacer Recursive Feature Elimination (RFE), construir un modelo de regresión lineal múltiple para predecir la variable Knees.diameter que incluya entre 5 y 15 predictores, seleccionando el conjunto de variables que maximice R2
+ y que use cinco repeticiones de validación cruzada de cinco pliegues para evitar el sobreajuste (obviamente no se debe considerar la variable TRG).
+Usando RFE, construir un modelo de regresión logística múltiple para la variable TRG que incluya el conjunto de predictores, entre cuatro y doce, que entregue la mejor curva ROC y que utilice validación cruzada dejando uno fuera para evitar el sobreajuste (obviamente no se debe considerar la variable Knees.diameter).
+Pronunciarse sobre la confiabilidad y el poder predictivo de los modelos obtenidos.
+
+
+Comencemos Incluyendo los paquetes que usaremos en este script.
+```{r}
+library(car)
+library(caret)
+library(dplyr)
+library(ggpubr)
+library(leaps)
+library(pROC)
+library(psych)
+```
+
+Obtengamos los datos en formato ancho.
+
+```{r}
+datos <- read.csv2(file = "EP09 Datos.csv", stringsAsFactors = TRUE)
+datos[["Gender"]] <- factor(datos[["Gender"]])
+```
+
+Generemos las variables nuevas requeridas para este ejercicio.
+
+```{r}
+datos_ext <- datos |> 
+  mutate(TRG = ifelse(Knees.diameter < 19.0, "no", "sí"))
+datos_ext[["TRG"]] <- factor(datos_ext[["TRG"]])
+```
+
+Obtenemos la muestra como indican las instrucciones 1 y 2, teniendo cuidado de desordenar los conjuntos de datos para que no queden juntos todos los casos con la misma clase, puesto que introduce artificialmente dependencia entre los datos.
+
+```{r}
+set.seed(11111)
+muestra_a <- datos_ext |> filter(TRG == "no") |> sample_n(50, replace = FALSE)
+muestra_b <- datos_ext |> filter(TRG == "sí") |> sample_n(50, replace = FALSE)
+muestra_ext <- rbind(muestra_a, muestra_b) |> sample_frac(1L)
+```
+
+
+Regresión lineal múltiple usando el paquete leaps
+Para cumplir la instrucción 3, buscaremos los predictores de forma exhaustiva, teniendo cuidado de indicar la variable prohibida.
+
+```{r}
+respuesta_lineal <- "Knees.diameter"
+respuesta_binaria <- "TRG"
+
+rlm1_df <- muestra_ext |> select(-all_of(respuesta_binaria))
+rlm1_fmla <- formula(paste(respuesta_lineal, ".", sep = " ~ "))
+rlm1_sets <- regsubsets(rlm1_fmla, data = rlm1_df, nbest = 3, nvmax = 8, method = "exhaustive")
+rlm1_sets_summ <- summary(rlm1_sets)
+rlm1_sets_i_mejor <- which.min(rlm1_sets_summ[["bic"]])
+rlm1_seleccion <- names(which(rlm1_sets_summ[["which"]][rlm1_sets_i_mejor, ])[-1])
+
+plot(rlm1_sets, main = "Subconjuntos modelo de RLM 1")
+```
+
+```{r}
+cat("Mejores predictores para el modelo de RLM 1:\n")
+print(rlm1_seleccion)
+```
+
+Mejores predictores para el modelo de RLM 1:
+[1] "Ankles.diameter" "Navel.Girth"     "Hip.Girth"       "Knee.Girth"     
+[5] "Gender1"        
+Vemos que hay varios subconjuntos que llevan a un BIC de alrededor de −120
+. El mejor subconjunto considera una variable indicadora (Gender1) que en realidad no aparece en la matriz de datos. Debemos tener cuidado de cambiarla por el nombre verdadero antes de usar este conjunto para construir el modelo. Para ello usaremos la función train() del paquete caret, indicando que use bootstrapping con B repeticiones para evitar sobreajuste, teniendo cuidado de definir una semilla para poder reproducir el mismo resultado cada vez que se ejecute el código.
+
+
+```{r}
+rlm1_seleccion[5] <- "Gender"
+rlm1_sel_text <- paste(rlm1_seleccion, collapse = " + ")
+rlm1_fmla <- formula(paste(respuesta_lineal, rlm1_sel_text, sep = " ~ "))
+
+B = 1999
+set.seed(11 * 11111)
+rlm1_train <- train(rlm1_fmla, data = rlm1_df, method = "lm",
+                    trControl = trainControl(method = "boot", number = B))
+rlm1 <- rlm1_train[["finalModel"]]
+
+cat("Modelo de RLM 1:\n")
+print(summary(rlm1))
+```
+
+Modelo de RLM 1:
+  
+
+Call:
+lm(formula = .outcome ~ ., data = dat)
+
+Residuals:
+     Min       1Q   Median       3Q      Max 
+-1.38769 -0.28241 -0.04487  0.37080  1.49998 
+
+Coefficients:
+                Estimate Std. Error t value Pr(>|t|)    
+(Intercept)      2.93227    1.13043   2.594 0.011006 *  
+Ankles.diameter  0.42012    0.08343   5.036 2.29e-06 ***
+Navel.Girth     -0.03489    0.01191  -2.928 0.004274 ** 
+Hip.Girth        0.07532    0.01890   3.985 0.000133 ***
+Knee.Girth       0.15367    0.03934   3.906 0.000177 ***
+Gender1          0.61814    0.17182   3.598 0.000514 ***
+---
+Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
+
+Residual standard error: 0.6185 on 94 degrees of freedom
+Multiple R-squared:  0.7815,    Adjusted R-squared:  0.7698 
+F-statistic: 67.23 on 5 and 94 DF,  p-value: < 2.2e-16
+
+
+
+Multicolinealidad
+Cuando los modelos tienen muchos predictores, la probabilidad de que exista multicolinealidad aumenta. Por eso, es bueno que descartemos este potencial problema tempranamente.
+
+```{r}
+cat("Factores de inflación de la varianza:\n")
+print(vif(rlm1))
+cat("\n")
+cat("Valores de tolerancia:\n")
+print(1 / vif(rlm1))
+```
+
+Factores de inflación de la varianza:
+Ankles.diameter     Navel.Girth       Hip.Girth      Knee.Girth         Gender1 
+       2.405305        2.787130        4.327124        2.699718        1.891284 
+
+Valores de tolerancia:
+Ankles.diameter     Navel.Girth       Hip.Girth      Knee.Girth         Gender1 
+      0.4157478       0.3587920       0.2311004       0.3704091       0.5287412 
+      
+Vemos que el predictor Hip.Girth está relativamente cerca del límite para declarar un problema de multicolinealidad. Para jugar seguro, mejor quitemos este predictor del modelo.
+
+
+```{r}
+rlm1_seleccion <- rlm1_seleccion[-3]
+rlm1_sel_text <- paste(rlm1_seleccion, collapse = " + ")
+rlm1_fmla <- formula(paste(respuesta_lineal, rlm1_sel_text, sep = " ~ "))
+
+set.seed(11 * 11111)
+rlm1_train <- train(rlm1_fmla, data = rlm1_df, method = "lm",
+                    trControl = trainControl(method = "boot", number = B))
+rlm1<- rlm1_train[["finalModel"]]
+
+cat("Modelo de RLM 1 con cuatro predictores:\n")
+print(summary(rlm1))
+cat("Factores de inflación de la varianza:\n")
+print(vif(rlm1))
+cat("\n")
+cat("Valores de tolerancia:\n")
+print(1 / vif(rlm1))
+```{r}
+
+Modelo de RLM 1 con cuatro predictores:
+
+Call:
+lm(formula = .outcome ~ ., data = dat)
+
+Residuals:
+    Min      1Q  Median      3Q     Max 
+-1.4967 -0.3223  0.0071  0.3946  2.3309 
+
+Coefficients:
+                 Estimate Std. Error t value Pr(>|t|)    
+(Intercept)      3.985153   1.182097   3.371  0.00108 ** 
+Ankles.diameter  0.428360   0.089700   4.775 6.50e-06 ***
+Navel.Girth     -0.005373   0.010037  -0.535  0.59365    
+Knee.Girth       0.255146   0.032258   7.909 4.67e-12 ***
+Gender1          0.497535   0.181896   2.735  0.00744 ** 
+---
+Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
+
+Residual standard error: 0.6652 on 95 degrees of freedom
+Multiple R-squared:  0.7445,    Adjusted R-squared:  0.7338 
+F-statistic: 69.22 on 4 and 95 DF,  p-value: < 2.2e-16
+
+Factores de inflación de la varianza:
+Ankles.diameter     Navel.Girth      Knee.Girth         Gender1 
+       2.403826        1.710125        1.569042        1.832618 
+
+Valores de tolerancia:
+Ankles.diameter     Navel.Girth      Knee.Girth         Gender1 
+      0.4160036       0.5847525       0.6373316       0.5456675 
+¡Bien! Ahora el modelo presenta niveles de multicolinealidad aceptables.
+
+      
+Ajuste y linealidad
+En la salida a pantalla anterior, podemos observar que el modelo obtenido consigue una reducción significativa de la varianza no explicada (F(4,95)=69,22
+; p<0.001
+) respecto del modelo nulo.
+
+Comprobemos ahora que los residuos cumplen las condiciones necesarias usando la función residualPlots() del paquete car. Sin embargo, las funciones de este paquete tienen problemas encontrando información usada por la función train() del paquete caret en la construcción del modelo. Por esta razón, primero creamos un modelo de la manera tradicional que es equivalente al modelo final obtenido por train().
+
+```{r}
+rlm1_equiv <- lm(rlm1_fmla, rlm1_df)
+
+cat("Prueba de curvatura para los predictores del modelo de RLM 1:\n")
+residualPlots(rlm1_equiv, terms = ~ 1,
+              col = "steelblue", pch = 20, col.quad = "red",
+              id = list(cex = 0.9, location = "lr"))
+title("Residuos (RLM 1)")
+```
+
+Prueba de curvatura para los predictores del modelo de RLM 1:
+           Test stat Pr(>|Test stat|)
+Tukey test   -0.7522            0.452
+Vemos que, si bien hay un caso atípico (98), no se observan patrones problemáticos, lo que es confirmado por las pruebas de curvatura aplicadas. Así, no hay evidencia para sospechar que los residuos no siguen una distribución normal centrada en cero para cada predictor (aunque se ven algunos posibles valores atípicos).
+
+Revisemos que la variable de salida se relaciona linealmente con los predictores por medio del gráfico de residuos parciales que entrega la función crPlots() del paquete car.
+
+
+```{r}
+crPlots(rlm1_equiv, terms = ~ . - Gender, layout = c(1, 3),
+        col = "steelblue", pch = 20, col.lines = c("red", "steelblue"),
+        smooth = list(smoother = loessLine, span = 1),
+        id = list(cex = 1.2, location = "lr"),
+        main = "Residuos parciales (RLM 1)", ylab = "Residuos parciales")
+```
+
+Primero, notamos que las relaciones entre cada predictor y la variable respuesta son aproximadamente lineales. Segundo, el modelo (línea segmentada roja) se ajusta bien a las relaciones observadas (líneas continua azul-acero), con unas leves desviaciones en los datos más extremos que evita apalancamiento.
+
+Tampoco se ven cambios en notorios en la varianza, lo que podemos confirmar con la prueba de varianza del error no constante.
+
+```{r}
+cat("Prueba de varianza del error no constante:\n")
+ncvTest(rlm1_equiv)
+```
+
+Prueba de varianza del error no constante:
+Non-constant Variance Score Test 
+Variance formula: ~ fitted.values 
+Chisquare = 0.8433325, Df = 1, p = 0.35845
+Casos sobreinfluyentes
+Usemos el gráfico de diagnóstico disponible en el paquete car entregado por la función influencePlot() que ya hemos usado en ejercicios prácticos anteriores.
+
+```{r}
+rlm1_inf_estad <- influencePlot(rlm1_equiv, fill.col = "steelblue",
+                                scale = 5, id = list(n = 3),
+                                main = "Influencia de casos (RLM 1)\n")
+```
+
+```{r}
+cat("Límites para el modelo de RLM 1:\n")
+cat("Rango para 95% de los residuos studentizados: ")
+cat("[", round(qt(0.05/2, nrow(rlm1_df) - length(predictors(rlm1)) - 2), 3), ", ", sep = "")
+cat(round(qt(1-0.05/2, nrow(rlm1_df) - length(predictors(rlm1)) - 2), 3), "]\n", sep = "")
+cat("Límite del apalancamiento:", round(2 * mean(hatvalues(rlm1)), 3), "\n")
+cat("Límite de la distancia de Cook:", round(3 * mean(cooks.distance(rlm1)), 3), "\n")
+cat("\nCasos notorios para el modelo de RLM 1:\n")
+print(rlm1_inf_estad)
+```
+
+Límites para el modelo de RLM 1:
+Rango para 95% de los residuos studentizados: [-1.986, 1.986]
+Límite del apalancamiento: 0.1 
+Límite de la distancia de Cook: 0.029 
+
+Casos notorios para el modelo de RLM 1:
+      StudRes        Hat      CookD
+11 -0.5976916 0.17337516 0.01508729
+12  2.2353713 0.05381179 0.05454203
+25 -2.3317219 0.02540675 0.02708227
+54  1.6589126 0.14345937 0.09051523
+86 -0.8546471 0.18757376 0.03382407
+98  3.8428609 0.04811658 0.13039905
+
+Ninguno de los casos notorios reportados por la función influencePlot() está fuera de rango en las tres métricas. Los casos 12 y 98 están alejados y exhiben una distancia de Cook alta, mientras que las observaciones 54 y 86 están fuera de los límites del apalancamiento y la distancia de Cook. Revisemos el impacto de estos casos en el modelo.
+
+```{r}
+mmps(rlm1_equiv, terms = ~ 1, 
+        col = "steelblue", pch = 20, col.line = c("steelblue", "red"),
+        smooth = list(smoother = loessLine, span = 1),
+        id = list(n = 6, cex = 0.7, location = "lr"),
+        main = "Relación marginal con predicciones (RLM 1)", sub = " ")
+```
+
+Podemos ver, en esta figura y en los gráficos de residuos parciales, que ninguno de los casos potencialmente problemáticos distorsiona la línea del modelo, por lo que no es necesario eliminar ninguna de estas observaciones.
+
+Independencia de los residuos
+Confirmemos que no existe dependencia entre los residuos generados por el modelo de RLM 1.
+
+```{r}
+cat("Prueba de la independencia de los residuos para el modelo de RLM 1:\n")
+print(durbinWatsonTest(rlm1))
+```
+
+Prueba de la independencia de los residuos para el modelo de RLM 1:
+ lag Autocorrelation D-W Statistic p-value
+   1    -0.002855788      1.979999   0.912
+ Alternative hypothesis: rho != 0
+Vemos que no hay razones para sospechar que los residuos no sean independientes para este modelo.
+
+Desempeño
+Veamos los niveles de error cometidos por el modelo de RLM 1 que hemos conseguido, analizando un histograma de los errores (RMSE) en cada repetición del bootstrapping y el reporte del error promedio generado por la función train().
+
+```{r}
+rlm1_err_df <- data.frame(RMSE = rlm1_train[["resample"]][["RMSE"]])
+rlm1_err_p <- gghistogram(rlm1_err_df, x = "RMSE", bins = 30,
+                          fill = "steelblue", ylab = "Frecuencia",
+                          title = "Distribución del error (RLM 1)")
+print(rlm1_err_p)
+```
+
+```{r}
+cat("Rendimiento del modelo de RLM 1:\n")
+print(rlm1_train[["results"]], digits = 3)
+cat("\nMás detalle del raíz del error cuadrático medio:\n")
+print(describe(rlm1_err_df, trim = 0, quant = c(0.25, 0.75),
+               skew = FALSE, IQR = TRUE), digits = 3)
+
+```
+Rendimiento del modelo de RLM 1:
+  intercept  RMSE Rsquared   MAE RMSESD RsquaredSD  MAESD
+1      TRUE 0.689    0.723 0.531   0.08     0.0736 0.0621
+
+Más detalle del raíz del error cuadrático medio:
+     vars    n  mean   sd median   min   max range    se   IQR Q0.25 Q0.75
+RMSE    1 1999 0.689 0.08  0.688 0.408 0.965 0.557 0.002 0.111 0.634 0.745
+
+Vemos que el error promedio que el modelo comete en sus estimaciones es de 0,689±0,080
+ cm, lo que es bastante bueno si consideramos que la variable de respuesta varía entre 16,0
+ y 21,6
+ cm, con una media de 18,95
+ cm. También podemos observar que la distribución del error es relativamente simétrica con un rango que va desde 0,408
+ y 0,965
+ cm con un rango intercuantil de 0,111
+ ([0,634
+; 0,745]
+).
+
+
+
+Regresión lineal múltiple usando Recursive Feature Elimination
+
+El paquete caret implementa la regresión escalonada hacia atrás bajo el nombre de Recursive Feature Elimination (RFE), mediante la función rfe(). Se pueden definir varias alternativas de control para guíar la búsqueda, incluyendo funciones wrapper para varios tipos de modelo. En particular, caret proporciona la función wrapper lmFuncs para trabajar modelos de regresión lineal.
+
+La instrucción 4 nos indica buscar, mediante cinco repeticiones de validación cruzada de cinco pliegues, un modelo de RLM que consiga el mayor valor del coeficiente de determinación R2
+ y que incluya entre 5 y 15 predictores. Esto podemos hacerlo con el siguiente código. Como la validación cruzada divide los datos de forma aleatoria, vamos a tener el cuidado de definir una semilla para su reproducibilidad.
+
+```{r}
+rlm2_df <- muestra_ext |> select(-all_of(respuesta_binaria))
+rlm2_fmla <- formula(paste(respuesta_lineal, ".", sep = " ~ "))
+rlm2_control <- rfeControl(functions = lmFuncs, method = "repeatedcv",
+                           number = 5, repeats = 5, verbose = FALSE)
+
+set.seed(13 * 11111)
+rlm2_rfe <- rfe(rlm2_fmla, data = rlm2_df, rfeControl = rlm2_control,
+                sizes = 5:15, metric = "Rsquared")
+rlm2 <- rlm2_rfe[["fit"]]
+```
+
+Veamos una representación gráfica del proceso de búsqueda realizado.
+
+```{r}
+rlm2_rfe_p <- ggplot(rlm2_rfe) + theme_pubr()
+rlm2_rfe_p <- ggpar(rlm2_rfe_p, title = "Búsqueda RFE (RLM 2)")
+print(rlm2_rfe_p)
+```
+
+Podemos apreciar que la búsqueda obtuvo el valor del R2
+ más alto con un modelo que considera 7 variables. Veamos el modelo obtenido.
+
+```{r}
+cat("Modelo de RLM 2 obtenido con RFE:\n")
+print(summary(rlm2))
+```
+
+Modelo de RLM 2 obtenido con RFE:
+
+Call:
+lm(formula = y ~ ., data = tmp)
+
+Residuals:
+     Min       1Q   Median       3Q      Max 
+-2.09011 -0.57630 -0.02443  0.50732  3.01450 
+
+Coefficients:
+                    Estimate Std. Error t value Pr(>|t|)    
+(Intercept)          5.29544    1.64110   3.227 0.001735 ** 
+Gender1             -0.33824    0.30246  -1.118 0.266355    
+Wrist.Minimum.Girth  0.15075    0.15929   0.946 0.346440    
+Ankles.diameter      0.43945    0.12635   3.478 0.000773 ***
+Wrists.diameter      0.05675    0.21346   0.266 0.790929    
+Elbows.diameter      0.03287    0.13747   0.239 0.811555    
+Chest.depth          0.04839    0.05063   0.956 0.341794    
+Forearm.Girth        0.12670    0.07477   1.695 0.093544 .  
+---
+Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
+
+Residual standard error: 0.8204 on 92 degrees of freedom
+Multiple R-squared:  0.6237,    Adjusted R-squared:  0.595 
+F-statistic: 21.78 on 7 and 92 DF,  p-value: < 2.2e-16
+
+
+Multicolinealidad
+
+Revisemos los niveles de multicolinealidad del modelo obtenido.
+
+```{r}
+cat("Factores de inflación de la varianza:\n")
+print(vif(rlm2))
+cat("\n")
+cat("Valores de tolerancia:\n")
+print(1 / vif(rlm2))
+```
+
+Factores de inflación de la varianza:
+            Gender1 Wrist.Minimum.Girth     Ankles.diameter     Wrists.diameter 
+           3.330997            6.796051            3.135140            5.706823 
+    Elbows.diameter         Chest.depth       Forearm.Girth 
+           4.820786            2.189152            6.295889 
+
+Valores de tolerancia:
+            Gender1 Wrist.Minimum.Girth     Ankles.diameter     Wrists.diameter 
+          0.3002104           0.1471443           0.3189651           0.1752288 
+    Elbows.diameter         Chest.depth       Forearm.Girth 
+          0.2074350           0.4567980           0.1588338 
+Vemos que hay varios predictores con valores de inflación de la varianza cercanos o sobre 5
+. La variable Wrist.Minimum.Girth es la que presenta el valor más alto, por lo que es mejor quitarla del modelo.
+
+```{r}
+rlm2_seleccion <- predictors(rlm2)[-2]
+rlm2_seleccion[1] <- "Gender"
+rlm2_sel_text <- paste(rlm2_seleccion, collapse = " + ")
+rlm2_fmla <- formula(paste(respuesta_lineal, rlm2_sel_text, sep = " ~ "))
+
+set.seed(13 * 11111)
+rlm2_train <- train(rlm2_fmla, data = rlm2_df, method = "lm",
+                    trControl = trainControl(method = "repeatedcv", number = 5, repeats = 5))
+rlm2<- rlm2_train[["finalModel"]]
+
+cat("Nuevos factores de inflación de la varianza:\n")
+print(vif(rlm2))
+cat("\n")
+cat("Nuevos valores de tolerancia:\n")
+print(1 / vif(rlm2))
+```
+
+Nuevos factores de inflación de la varianza:
+        Gender1 Ankles.diameter Wrists.diameter Elbows.diameter     Chest.depth 
+       3.329586        3.099705        4.519014        4.819889        2.153033 
+  Forearm.Girth 
+       4.884168 
+
+Nuevos valores de tolerancia:
+        Gender1 Ankles.diameter Wrists.diameter Elbows.diameter     Chest.depth 
+      0.3003376       0.3226114       0.2212872       0.2074737       0.4644610 
+  Forearm.Girth 
+      0.2047432 
+Podemos apreciar que mejoran los valores de inflación de la varianza, aunque la variable Forearm.Girth sigue presentando un valor alto. Mejor quitarlo del modelo.
+
+```{r}
+rlm2_seleccion <- rlm2_seleccion[-6]
+rlm2_sel_text <- paste(rlm2_seleccion, collapse = " + ")
+rlm2_fmla <- formula(paste(respuesta_lineal, rlm2_sel_text, sep = " ~ "))
+
+set.seed(13 * 11111)
+rlm2_train <- train(rlm2_fmla, data = rlm2_df, method = "lm",
+                    trControl = trainControl(method = "repeatedcv", number = 5, repeats = 5))
+rlm2 <- rlm2_train[["finalModel"]]
+
+cat("Nuevos factores de inflación de la varianza (2):\n")
+print(vif(rlm2))
+cat("\n")
+cat("Nuevos valores de tolerancia (2):\n")
+print(1 / vif(rlm2))
+```
+
+Nuevos factores de inflación de la varianza (2):
+        Gender1 Ankles.diameter Wrists.diameter Elbows.diameter     Chest.depth 
+       3.200859        3.094765        4.053677        4.168391        1.987696 
+
+Nuevos valores de tolerancia (2):
+        Gender1 Ankles.diameter Wrists.diameter Elbows.diameter     Chest.depth 
+      0.3124161       0.3231263       0.2466896       0.2399007       0.5030950 
+      
+Vemos que ahora los predictores presentan niveles de multicolinealidad más o menos aceptables. Como el enunciado nos exige un mínimo de 5 predictores, detenemos esta poda aquí, aunque es probable que todavía haya espacio para reducir más el modelo.
+
+Ajuste y linealidad
+Revisemos el modelo conseguido.
+
+```{r}
+cat("Modelo de RLM 2 con cinco predictores:\n")
+print(summary(rlm2), digits = 3)
+```
+
+Modelo de RLM 2 con cinco predictores:
+
+Call:
+lm(formula = .outcome ~ ., data = dat)
+
+Residuals:
+   Min     1Q Median     3Q    Max 
+-2.004 -0.502 -0.026  0.519  3.174 
+
+Coefficients:
+                Estimate Std. Error t value Pr(>|t|)    
+(Intercept)       6.0237     1.6372    3.68  0.00039 ***
+Gender1          -0.1995     0.3040   -0.66  0.51329    
+Ankles.diameter   0.4400     0.1287    3.42  0.00093 ***
+Wrists.diameter   0.2972     0.1845    1.61  0.11048    
+Elbows.diameter   0.1540     0.1311    1.18  0.24285    
+Chest.depth       0.0884     0.0495    1.79  0.07719 .  
+---
+Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
+
+Residual standard error: 0.841 on 94 degrees of freedom
+Multiple R-squared:  0.596, Adjusted R-squared:  0.574 
+F-statistic: 27.7 on 5 and 94 DF,  p-value: <2e-16
+Observamos que el modelo consigue una reducción significa de la varianza no explicada en comparación al modelo nulo (F(5,94)=27,71
+; p<0.001
+), aunque confirmamos que hay variables que no contribuyen significativamente a este ajuste y que podrían quitarse del modelo.
+
+Revisemos el gráfico de diagnóstico de los residuos que genera este modelo (usando un modelo equivalente creado con las funciones base).
+
+```{r}
+rlm2_equiv <- lm(rlm2_fmla, rlm2_df)
+
+cat("Prueba de curvatura para los predictores del modelo de RLM 2:\n")
+residualPlots(rlm2_equiv, terms = ~ 1,
+              col = "steelblue", pch = 20, col.quad = "red",
+              id = list(cex = 0.9, location = "lr"))
+title("Residuos (RLM 2)")
+```
+
+
+
+Prueba de curvatura para los predictores del modelo de RLM 2:
+           Test stat Pr(>|Test stat|)
+Tukey test   -0.9153             0.36
+
+Vemos que los residuos muestran el comportamiento esperado, con el mismo caso atípico observado con el modelo anterior. Esto es confirmado por la prueba de curvatura, por lo que no tenemos evidencia para creer que los residuos no siguen una distribución normal con varianza constante. Si tuviéramos dudas, podríamos confirmar con gráficos y pruebas auxiliares, aunque deberíamos quitar este único caso atípico del análisis para mayor robustez cuando sea posible.
+
+```{r}
+cat("Normalidad de los residuos generados por el modelo (RLM 2):\n")
+shapiro.test(resid(rlm2)[-98])
+
+cat("\nPrueba de varianza del error no constante (RLM 2):\n")
+ncvTest(rlm2)
+```
+
+Normalidad de los residuos generados por el modelo (RLM 2):
+
+    Shapiro-Wilk normality test
+
+data:  resid(rlm2)[-98]
+W = 0.98996, p-value = 0.6677
+
+
+Prueba de varianza del error no constante (RLM 2):
+Non-constant Variance Score Test 
+Variance formula: ~ fitted.values 
+Chisquare = 0.04152027, Df = 1, p = 0.83854
+Revisemos ahora la condición de linealidad entre predictores y variable de salida.
+
+```{r}
+crPlots(rlm2_equiv, terms = ~ . - Gender,
+        col = "steelblue", pch = 20, col.lines = c("red", "steelblue"),
+        smooth = list(smoother = loessLine, span = 1),
+        id = list(cex = 1.0, location = "lr"),
+        main = "Residuos parciales (RLM 2)", ylab = "Residuos parciales")
+```
+
+Observamos que las relaciones entre cada predictor y la variable respuesta son aproximadamente lineales y que el modelo logra ajustarse bien a estos datos, incluso evitando el apalancamiento que podría ejercer algunos valores en el extremo inferior de estas variables.
+
+Casos sobreinfluyentes
+Revisemos el gráfico de influencia y los casos notorios que se identifican en él.
+
+```{r}
+rlm2_inf_estad <- influencePlot(rlm2_equiv, fill.col = "steelblue",
+                                scale = 5, id = list(n = 3),
+                                main = "Influencia de casos (RLM 2)\n")
+```
+
+```{r}
+
+cat("Límites para el modelo de RLM 2:\n")
+cat("Rango para 95% de los residuos studentizados: ")
+cat("[", round(qt(0.05/2, nrow(rlm2_df) - length(predictors(rlm2)) - 2), 3), ", ", sep = "")
+cat(round(qt(1-0.05/2, nrow(rlm2_df) - length(predictors(rlm2)) - 2), 3), "]\n", sep = "")
+cat("Límite del apalancamiento:", round(2 * mean(hatvalues(rlm2)), 3), "\n")
+cat("Límite de la distancia de Cook:", round(3 * mean(cooks.distance(rlm2)), 3), "\n")
+cat("\nCasos notorios para el modelo de RLM 2:\n")
+print(rlm2_inf_estad)
+```
+
+Límites para el modelo de RLM 2:
+Rango para 95% de los residuos studentizados: [-1.986, 1.986]
+Límite del apalancamiento: 0.12 
+Límite de la distancia de Cook: 0.033 
+
+Casos notorios para el modelo de RLM 2:
+      StudRes        Hat       CookD
+11 -0.5208844 0.19601905 0.011111271
+12  2.6135436 0.03608069 0.040124218
+42 -2.4837976 0.02898390 0.029091246
+54  1.7361259 0.18209073 0.109493062
+68 -1.9342825 0.11357271 0.077630916
+74 -0.2233511 0.15007108 0.001483035
+98  4.2782016 0.07913052 0.221379876
+A priori, ningún residuo esta fuera de rango en los tres criterios. Los casos 12 y 98 son atípicos y con distancia de Cook alta, mientras que el caso 54 presenta apalancamiento y distancia de Cook fuera de los límites. Sin embargo, ninguno de estos casos parece influir demasiado en las rectas de regresiones parciales de arriba. Veamos su impacto en las predicciones del modelo.
+
+```{r}
+mmps(rlm2_equiv, terms = ~ 1, 
+    col = "steelblue", pch = 20, col.line = c("steelblue", "red"),
+    smooth = list(smoother = loessLine, span = 1),
+    id = list(n = 6, cex = 0.7, location = "lr"),
+    main = "Relación marginal con predicciones (RLM 1)", sub = " ")
+```
+
+Se puede observar que ninguno de los casos identificados como potencialmente problemático ejerce una influencia indebida en el modelo, que se ajusta bien a los datos, evitando incluso el apalancamiento que ejercen los casos 11, 16 y 82 en la parte baja de las predicciones.
+
+Independencia de los residuos
+Confirmemos que no existe dependencia entre los residuos generados por el modelo de RLM 2.
+
+```{r}
+cat("Prueba de la independencia de los residuos para el modelo de RLM 1:\n")
+print(durbinWatsonTest(rlm2))
+```
+
+Prueba de la independencia de los residuos para el modelo de RLM 1:
+ lag Autocorrelation D-W Statistic p-value
+   1     -0.02315018      2.038852   0.824
+ Alternative hypothesis: rho != 0
+Vemos que no hay razones para rechazar la hipótesis de que los residuos de este modelo son independientes.
+
+Desempeño
+Veamos los niveles de error cometidos por el modelo de RLM 2 que hemos conseguido. Como antes, analizando un histograma de los errores (RMSE) en cada repetición, esta vez de la validación cruzada, además del reporte generado por la función train().
+
+```{r}
+rlm2_err_df <- data.frame(RMSE = rlm2_train[["resample"]][["RMSE"]])
+rlm2_err_p <- gghistogram(rlm2_err_df, x = "RMSE", bins = 5,
+                          fill = "steelblue", ylab = "Frecuencia",
+                          title = "Distribución del error (RLM 2)")
+print(rlm2_err_p)
+```
+
+```{r}
+cat("Rendimiento del modelo de RLM 2:\n")
+print(rlm2_train[["results"]], digits = 3)
+cat("\nMás detalle de la raíz del error cuadrático medio:\n")
+print(describe(rlm2_err_df, trim = 0, quant = c(0.25, 0.75),
+               skew = FALSE, IQR = TRUE), digits = 3)
+```
+
+Rendimiento del modelo de RLM 2:
+  intercept  RMSE Rsquared   MAE RMSESD RsquaredSD  MAESD
+1      TRUE 0.859    0.568 0.677  0.146      0.161 0.0881
+
+Más detalle de la raíz del error cuadrático medio:
+     vars  n  mean    sd median   min   max range    se   IQR Q0.25 Q0.75
+RMSE    1 25 0.859 0.146  0.859 0.623 1.152 0.528 0.029 0.206 0.767 0.973
+El modelo comete errores que van desde 0,623
+ y 1,152
+ cm (0,859±0,146
+ cm en promedio). Este resultado no es malo si consideramos que la variable de respuesta varía entre 16,0
+ y 21,6
+ cm.
+
+
+
+Regresión logística múltiple usando RFE
+La instrucción 5 nos pide usar RFE para conseguir un modelo de regresión logística múltiple (RLogitM), que incluya de 4 a 12 predictores, utilizando validación cruzada dejando uno fuera para evitar el sobreajuste.
+
+Esto podemos hacerlo con el siguiente código, que indica a la función rfe() que utilice la función twoClassSummary() para medir el rendimiento del modelo, la que calcula las métricas de sensibilidad, especificidad y área bajo la curva ROC. Nuevamente definimos una semilla para poder reproducir la validación cruzada.
+Notemos que se suprimen los warnings puesto muchas combinaciones podrían tener problemas para converger y se nos llenaría la pantalla con estos mensajes.
+
+```{r}
+rlogitm_df <- muestra_ext |> select(-all_of(respuesta_lineal))
+rlogitm_fmla <- formula(paste(respuesta_binaria, ".", sep = " ~ "))
+
+lrFuncs[["summary"]] <- twoClassSummary
+rlogitm_rfe_control <- rfeControl(functions = lrFuncs, method = "LOOCV", saveDetails = TRUE, returnResamp = "all", verbose = FALSE)
+rlogitm_train_control <- trainControl(method = "none", classProbs = TRUE,
+                                      summaryFunction = twoClassSummary)
+
+set.seed(17 * 11111)
+rlogitm_rfe <- suppressWarnings(
+  rfe(rlogitm_fmla, data = rlogitm_df, sizes = 4:12, metric = "ROC",
+      rfeControl = rlogitm_rfe_control, trControl = rlogitm_train_control)
+)
+rlogitm <- rlogitm_rfe[["fit"]]
+
+cat("Modelo de RLogitM obtenido con RFE:\n")
+print(summary(rlogitm))
+```
+
+Modelo de RLogitM obtenido con RFE:
+
+Call:
+glm(formula = Class ~ ., family = "binomial", data = tmp)
+
+Coefficients:
+                         Estimate Std. Error z value Pr(>|z|)    
+(Intercept)             -61.16686   14.20889  -4.305 1.67e-05 ***
+Wrist.Minimum.Girth       1.08980    0.70420   1.548  0.12173    
+Ankle.Minimum.Girth      -0.70453    0.40231  -1.751  0.07991 .  
+Height                   -0.03355    0.06375  -0.526  0.59863    
+Bitrochanteric.diameter   0.19892    0.24482   0.813  0.41650    
+Ankles.diameter           1.74282    0.65897   2.645  0.00817 ** 
+Forearm.Girth            -0.23535    0.34006  -0.692  0.48889    
+Shoulder.Girth            0.09991    0.07296   1.369  0.17087    
+Knee.Girth                0.80926    0.34578   2.340  0.01926 *  
+---
+Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
+
+(Dispersion parameter for binomial family taken to be 1)
+
+    Null deviance: 138.629  on 99  degrees of freedom
+Residual deviance:  56.589  on 91  degrees of freedom
+AIC: 74.589
+
+Number of Fisher Scoring iterations: 7
+
+
+Podemos ver el proceso de búsqueda realizado por RFE.
+
+
+```{r}
+rlogitm_rfe_p <- ggplot(rlogitm_rfe) + theme_pubr()
+rlogitm_rfe_p <- ggpar(rlogitm_rfe_p, title = "Búsqueda RFE (RLogitM)")
+print(rlogitm_rfe_p)
+```
+
+Observemos que usando la función twoClassSummary() para medir el rendimiento del modelo, la búsqueda de predictores intenta maximizar el área bajo la curva ROC obtenida.
+
+Aprovechemos de notar que por la naturaleza de RFE, que intenta ir eliminar predictores, siempre se evalúa el modelo con todos los posibles predictores, que en este caso resulta con menor desempeño que usando 4 a 12 variables. Si bien los mensajes de warnings que se generan por dificultades de convergencia pueden ser molestos, en general esto no es problemático, a menos que este modelo inicial converja y obtenga el mejor resultado. En ese caso la función rfe() retorna este modelo y hay que bucear en las opciones y el objeto que retorna para recuperar algún modelo con el tamaño solicitado.
+
+Multicolinealidad
+Revisemos los niveles de multicolinealidad del modelo inicial.
+
+```{r}
+cat("Factores de inflación de la varianza:\n")
+print(vif(rlogitm))
+cat("\n")
+cat("Valores de tolerancia:\n")
+print(1 / vif(rlogitm))
+```
+
+Factores de inflación de la varianza:
+    Wrist.Minimum.Girth     Ankle.Minimum.Girth                  Height 
+               3.953721                3.099090                1.981193 
+Bitrochanteric.diameter         Ankles.diameter           Forearm.Girth 
+               1.363920                1.679955                5.003949 
+         Shoulder.Girth              Knee.Girth 
+               2.936470                3.089147 
+
+Valores de tolerancia:
+    Wrist.Minimum.Girth     Ankle.Minimum.Girth                  Height 
+              0.2529263               0.3226754               0.5047464 
+Bitrochanteric.diameter         Ankles.diameter           Forearm.Girth 
+              0.7331810               0.5952541               0.1998421 
+         Shoulder.Girth              Knee.Girth 
+              0.3405450               0.3237139 
+Apreciamos que solo la variable Forearm.Girth muestra valores de inflación de la varianza preocupantes, por lo que procedemos a sacarla del modelo.
+
+```{r}
+rlogitm_seleccion <- predictors(rlogitm)[-6]
+rlogitm_sel_text <- paste(rlogitm_seleccion, collapse = " + ")
+rlogitm_fmla <- formula(paste(respuesta_binaria, rlogitm_sel_text, sep = " ~ "))
+rlogitm_train_control <- trainControl(method = "LOOCV", classProbs = TRUE,
+                                      summaryFunction = twoClassSummary)
+
+set.seed(17 * 11111)
+rlogitm_train <- train(rlogitm_fmla, data = rlogitm_df, method = "glm", metric = "ROC",
+                       trControl = rlogitm_train_control)
+rlogitm <- rlogitm_train[["finalModel"]]
+
+cat("Nuevos factores de inflación de la varianza:\n")
+print(vif(rlogitm))
+cat("\n")
+cat("Nuevos valores de tolerancia:\n")
+print(1 / vif(rlogitm))
+```
+
+
+Nuevos factores de inflación de la varianza:
+    Wrist.Minimum.Girth     Ankle.Minimum.Girth                  Height 
+               2.137769                2.841019                1.818548 
+Bitrochanteric.diameter         Ankles.diameter          Shoulder.Girth 
+               1.345249                1.502785                1.901734 
+             Knee.Girth 
+               2.821926 
+
+Nuevos valores de tolerancia:
+    Wrist.Minimum.Girth     Ankle.Minimum.Girth                  Height 
+              0.4677775               0.3519864               0.5498892 
+Bitrochanteric.diameter         Ankles.diameter          Shoulder.Girth 
+              0.7433570               0.6654311               0.5258359 
+             Knee.Girth 
+              0.3543679 
+Con esto hemos conseguido un modelo que incluye siete predictores con niveles de multicolinealidad aceptables.
+
+
+Ajuste
+Revisemos el modelo conseguido y realicemos una comparación con el modelo nulo usando la prueba de la razón de verosimilitud (y un modelo tradicional equivalente para que funcione con las funciones del paquete car).
+
+```{r}
+rlogitm_equiv <- glm(rlogitm_fmla, data = rlogitm_df, family = binomial(link = "logit"))
+
+rlogitm_nulo_fmla <- formula(paste(respuesta_binaria, "1", sep = " ~ "))
+rlogitm_nulo <- glm(rlogitm_nulo_fmla, data = rlogitm_df, family = binomial(link = "logit"))
+
+cat("Modelo de RLogitM con cinco predictores:\n")
+print(summary(rlogitm))
+cat("\n")
+cat("Comparación con el modelo nulo:\n")
+print(anova(rlogitm_nulo, rlogitm_equiv, test = "LRT"))
+```
+
+Modelo de RLogitM con cinco predictores:
+
+Call:
+NULL
+
+Coefficients:
+                         Estimate Std. Error z value Pr(>|z|)    
+(Intercept)             -58.80135   13.41116  -4.385 1.16e-05 ***
+Wrist.Minimum.Girth       0.77293    0.51501   1.501  0.13340    
+Ankle.Minimum.Girth      -0.64039    0.38654  -1.657  0.09757 .  
+Height                   -0.02186    0.06135  -0.356  0.72163    
+Bitrochanteric.diameter   0.19583    0.24499   0.799  0.42409    
+Ankles.diameter           1.61034    0.61120   2.635  0.00842 ** 
+Shoulder.Girth            0.07036    0.05881   1.196  0.23152    
+Knee.Girth                0.76333    0.32939   2.317  0.02048 *  
+---
+Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
+
+(Dispersion parameter for binomial family taken to be 1)
+
+    Null deviance: 138.629  on 99  degrees of freedom
+Residual deviance:  57.078  on 92  degrees of freedom
+AIC: 73.078
+
+Number of Fisher Scoring iterations: 7
+
+
+Comparación con el modelo nulo:
+Analysis of Deviance Table
+
+Model 1: TRG ~ 1
+Model 2: TRG ~ Wrist.Minimum.Girth + Ankle.Minimum.Girth + Height + Bitrochanteric.diameter + 
+    Ankles.diameter + Shoulder.Girth + Knee.Girth
+  Resid. Df Resid. Dev Df Deviance  Pr(>Chi)    
+1        99    138.629                          
+2        92     57.078  7   81.552 6.644e-15 ***
+---
+Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
+Observamos que el modelo consigue una reducción importante y significativa de la devianza (χ2(6)=81,426,p<0.001
+) respecto del modelo nulo.
+
+
+
+
+Relaciones lineales
+Revisemos que se cumple la condición de relaciones lineales entre los predictores y la respuesta transformada, para lo que usaremos la función avPlots() del paquete car . En este ocasión también marcaremos, con elipses, las nubes de puntos con 50% y 95% de los casos para que nos ayuden a identificar casos influyentes.
+```{r}
+avPlots(rlogitm_equiv, layout = c(4, 2),
+        col = "steelblue", pch = 20, cex = 1.5, lty = 2, col.lines = "red",
+        main = "Regresiones parciales",
+        id = list(n = 3, cex = 1, location = "lr"),
+        ellipse = list(levels=c(0.50, 0.95), col = "purple"))
+```
+En estos gráficos podemos observar características relevantes. Primero, que todas las relaciones de entre los predictores y la variable de salida transformada parecen lineales, sin que se vean patrones que se podrían atribuir a relaciones de otro tipo. Segundo, que la nube central de puntos domina el ajuste de las rectas de regresión parciales, que no parecen estar afectadas por los pocos valores que se alejan hacia los extremos (que tenderían a hacerlas más horizontales). Por último, es claro que las relaciones de la respuesta con la estatura (Height) y el diámetro bitrocantérico (Bitrochanteric.diameter) son prácticamente nulas, mientras que con el grosor mínimo de las muñecas (Wrist.Minimum.Girth) y el grosor a la altura de los hombros (Shoulder.Girth) también se ven bastante débiles. Vemos que el ajuste es muy bueno, con alguna desviación en los valores extremos del predictor Ankle.Minimum.Girth, pero que no parece importante. Recordemos que el último subgráfico representa la distribución condicional de la variable respuesta dado el modelo ajustado. Vemos que esta estimación también es de muy buena calidad.
+
+En consecuencia, y dado que se nos pide un modelo con al menos cinco predictores, es mejor que quitemos, uno a uno, los que contribuyen menos al ajuste del modelo, comenzando con Height (t(92)=−0,356
+).
+
+```{r}
+rlogitm_seleccion <- rlogitm_seleccion[-3]
+rlogitm_sel_text <- paste(rlogitm_seleccion, collapse = " + ")
+rlogitm_fmla <- formula(paste(respuesta_binaria, rlogitm_sel_text, sep = " ~ "))
+rlogitm_train_control <- trainControl(method = "LOOCV", classProbs = TRUE,
+                                      summaryFunction = twoClassSummary)
+
+set.seed(17 * 11111)
+rlogitm_train <- train(rlogitm_fmla, data = rlogitm_df, method = "glm", metric = "ROC",
+                       trControl = rlogitm_train_control)
+rlogitm <- rlogitm_train[["finalModel"]]
+
+cat("Nuevo modelo de RLogitM:\n")
+print(summary(rlogitm))
+```
+
+Nuevo modelo de RLogitM:
+
+Call:
+NULL
+
+Coefficients:
+                         Estimate Std. Error z value Pr(>|z|)    
+(Intercept)             -59.97019   13.10765  -4.575 4.76e-06 ***
+Wrist.Minimum.Girth       0.72259    0.49504   1.460  0.14438    
+Ankle.Minimum.Girth      -0.57509    0.33619  -1.711  0.08716 .  
+Bitrochanteric.diameter   0.18262    0.24214   0.754  0.45073    
+Ankles.diameter           1.56872    0.59377   2.642  0.00824 ** 
+Shoulder.Girth            0.06306    0.05497   1.147  0.25124    
+Knee.Girth                0.72447    0.30492   2.376  0.01751 *  
+---
+Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
+
+(Dispersion parameter for binomial family taken to be 1)
+
+    Null deviance: 138.629  on 99  degrees of freedom
+Residual deviance:  57.203  on 93  degrees of freedom
+AIC: 71.203
+
+Number of Fisher Scoring iterations: 6
+La variable Bitrochanteric.diameter sigue siendo la que menos contribuye al ajuste del modelo (t(92)=−0,356
+), por lo que procedemos a eliminarla.
+
+```{r}
+rlogitm_seleccion <- rlogitm_seleccion[-3]
+rlogitm_sel_text <- paste(rlogitm_seleccion, collapse = " + ")
+rlogitm_fmla <- formula(paste(respuesta_binaria, rlogitm_sel_text, sep = " ~ "))
+rlogitm_train_control <- trainControl(method = "LOOCV", classProbs = TRUE,
+                                      summaryFunction = twoClassSummary)
+
+set.seed(17 * 11111)
+rlogitm_train <- train(rlogitm_fmla, data = rlogitm_df, method = "glm", metric = "ROC",
+                       trControl = rlogitm_train_control)
+rlogitm <- rlogitm_train[["finalModel"]]
+
+cat("Nuevo modelo de RLogitM con 5 predictores:\n")
+print(summary(rlogitm))
+```
+
+Nuevo modelo de RLogitM con 5 predictores:
+
+Call:
+NULL
+
+Coefficients:
+                     Estimate Std. Error z value Pr(>|z|)    
+(Intercept)         -58.29107   12.89091  -4.522 6.13e-06 ***
+Wrist.Minimum.Girth   0.75119    0.49568   1.515  0.12965    
+Ankle.Minimum.Girth  -0.58747    0.33055  -1.777  0.07553 .  
+Ankles.diameter       1.63111    0.58798   2.774  0.00554 ** 
+Shoulder.Girth        0.06042    0.05391   1.121  0.26241    
+Knee.Girth            0.81847    0.28271   2.895  0.00379 ** 
+---
+Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
+
+(Dispersion parameter for binomial family taken to be 1)
+
+    Null deviance: 138.629  on 99  degrees of freedom
+Residual deviance:  57.782  on 94  degrees of freedom
+AIC: 69.782
+
+Number of Fisher Scoring iterations: 6
+Vemos que este modelo más simple consigue prácticamente la misma reducción de desviación que el modelo con dos predictores extras: 57,782 vs. 57,078 respectivamente.
+
+Hagamos una revisión rápida que todo va bien con este modelo.
+
+```{r}
+rlogitm_equiv <- glm(rlogitm_fmla, data = rlogitm_df, family = binomial(link = "logit"))
+
+cat("Nuevos factores de inflación de la varianza:\n")
+print(vif(rlogitm))
+
+avPlots(rlogitm_equiv, layout = c(3, 2),
+        col = "steelblue", pch = 20, cex = 1.5, lty = 2, col.lines = "red",
+        main = "Regresiones parciales",
+        id = list(n = 3, cex = 1, location = "lr"),
+        ellipse = list(levels=c(0.50, 0.95), col = "purple"))
+```
+
+Nuevos factores de inflación de la varianza:
+Wrist.Minimum.Girth Ankle.Minimum.Girth     Ankles.diameter      Shoulder.Girth 
+           1.932528            2.099071            1.395360            1.666613 
+         Knee.Girth 
+           2.092049 
+Si bien hay predictores que parecen irrelevantes, por las restricciones del enunciado no podemos quitar más variables y detenemos este proceso aquí.
+
+
+
+Casos sobreinfluyentes
+Confirmemos que no hay casos con sobre influencia en el modelo.
+
+```{r}
+rlogitm_inf_estad <- influencePlot(rlogitm_equiv, , fill.col = "steelblue",
+                                scale = 5, id = list(n = 3),
+                                main = "Influencia de casos (RLogitM)\n")
+```
+
+```{r}
+cat("Límites para el modelo de RLogitM:\n")
+cat("Rango para 95% de los residuos studentizados: ")
+cat("[", round(qt(0.05/2, nrow(rlogitm_df) - length(predictors(rlogitm)) - 2), 3), ", ", sep = "")
+cat(round(qt(1-0.05/2, nrow(rlogitm_df) - length(predictors(rlogitm)) - 2), 3), "]\n", sep = "")
+cat("Límite del apalancamiento:", round(2 * mean(hatvalues(rlogitm)), 3), "\n")
+cat("Límite de la distancia de Cook:", round(3 * mean(cooks.distance(rlogitm)), 3), "\n")
+cat("\nCasos notorios para el modelo de RLogitM:\n")
+print(rlogitm_inf_estad)
+```
+
+Límites para el modelo de RLogitM:
+Rango para 95% de los residuos studentizados: [-1.986, 1.986]
+Límite del apalancamiento: 0.12 
+Límite de la distancia de Cook: 0.042 
+
+Casos notorios para el modelo de RLogitM:
+      StudRes        Hat      CookD
+24  1.0418291 0.24647971 0.04109543
+25 -2.2054816 0.05609974 0.08374029
+50  1.3252436 0.49842024 0.23104555
+68 -2.8377327 0.03687325 0.20109492
+93 -0.9839328 0.21600404 0.02999544
+98  2.3895710 0.07685464 0.15498576
+
+
+Observamos que el residuo 98 esta fuera de rango en los tres criterios, pero que sin embargo no parece desviar ninguna de las rectas de regresión parciales. Algo similar ocurre con el caso 68. Los casos 62 y 93, ni siquiera aparecen destacados en las regresiones parciales.
+
+Sin embargo, el caso 50 podría estar tirando la pendiente asociada al grosor mínimo de los tobillos (Ankle.Minimum.Girth) hacia valores negativos; mientras que el caso 24 podría estar aumentando espuriamente la pendiente asociada al grosor a la altura de los hombros (Shoulder.Girth). Es poco probable que estos dos casos dominen el ajuste del modelo, pero para hacer el ejercicio interesante, procedemos a eliminarlos.
+
+```{r}
+rlogitm_df_2 <- rlogitm_df[-c(24, 50), ]
+
+set.seed(17 * 11111)
+rlogitm_train_2 <- train(rlogitm_fmla, data = rlogitm_df_2, method = "glm", metric = "ROC",
+                         trControl = rlogitm_train_control)
+rlogitm_2 <- rlogitm_train_2[["finalModel"]]
+
+cat("Modelo de RLogitM actualizado\n")
+print(summary(rlogitm_2))
+```
+
+Modelo de RLogitM actualizado
+
+Call:
+NULL
+
+Coefficients:
+                     Estimate Std. Error z value Pr(>|z|)    
+(Intercept)         -63.22329   14.27889  -4.428 9.52e-06 ***
+Wrist.Minimum.Girth   0.88049    0.54221   1.624   0.1044    
+Ankle.Minimum.Girth  -0.19549    0.41141  -0.475   0.6347    
+Ankles.diameter       1.34676    0.58924   2.286   0.0223 *  
+Shoulder.Girth        0.04292    0.05964   0.720   0.4717    
+Knee.Girth            0.81627    0.28438   2.870   0.0041 ** 
+---
+Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
+
+(Dispersion parameter for binomial family taken to be 1)
+
+    Null deviance: 135.816  on 97  degrees of freedom
+Residual deviance:  54.348  on 92  degrees of freedom
+AIC: 66.348
+
+Number of Fisher Scoring iterations: 7
+
+
+Claramente los coeficientes para estos predictores estaban inflados, y ahora resulta más evidente que no aportan al ajuste del modelo. Hagamos una revisión rápida que todo va bien con este modelo.
+
+
+```{r}
+rlogitm_equiv_2 <- glm(rlogitm_fmla, data = rlogitm_df_2, family = binomial(link = "logit"))
+
+cat("Nuevos factores de inflación de la varianza:\n")
+print(vif(rlogitm_2))
+
+avPlots(rlogitm_equiv_2, layout = c(3, 2),
+        col = "steelblue", pch = 20, cex = 1.5, lty = 2, col.lines = "red",
+        main = "Regresiones parciales",
+        id = list(n = 3, cex = 1, location = "lr"),
+        ellipse = list(levels=c(0.50, 0.95), col = "purple"))
+```
+
+Nuevos factores de inflación de la varianza:
+Wrist.Minimum.Girth Ankle.Minimum.Girth     Ankles.diameter      Shoulder.Girth 
+           2.124653            1.352894            1.404387            1.868007 
+         Knee.Girth 
+           1.405886 
+
+Independencia de los residuos
+
+Confirmemos que el modelo de RLogitM conseguido no genera dependencia en los residuos.
+
+```{r}
+cat("Prueba de la independencia de los residuos para el modelo de RLogitM:\n")
+print(durbinWatsonTest(rlogitm_2))
+```
+
+Prueba de la independencia de los residuos para el modelo de RLogitM:
+ lag Autocorrelation D-W Statistic p-value
+   1        0.109564      1.762728   0.208
+ Alternative hypothesis: rho != 0
+Vemos que no hay razones para rechazar la independencia de los residuos de este modelo.
+
+Desempeño
+Recordemos que el método de de validación cruzada dejando uno fuera evalúa solo una observación en cada iteración. Por lo tanto, al concluir las iteraciones, solo tiene una tabla de confusión de donde calcular las métricas de desempeño, es decir, no hay varias estimaciones del rendimiento del modelo como teníamos en las preguntas anteriores. Podemos conocer el desempeño del modelo de forma directa.
+
+```{r}
+cat("Rendimiento del modelo de RLogitM actualizado:\n")
+print(rlogitm_train_2[["results"]][, 2:4], digits = 2)
+```
+
+Rendimiento del modelo de RLogitM actualizado:
+   ROC Sens Spec
+1 0.92 0.86  0.9
+Vemos que el modelo obtenido tiene un rendimiento relativamente bueno, con un área bajo la curva ROC de 0,92
+ (sensibilidad = 0,86
+, especificidad = 0,90
+).
+
+Por supuesto podemos tener más detalles de estos resultados mirando, por ejemplo, la matriz de confusión resultante.
+
+```{r}
+rlogitm_mat_conf <- confusionMatrix(rlogitm_train_2[["pred"]][["pred"]],
+                                    rlogitm_train_2[["pred"]][["obs"]])
+
+cat("Matriz de confusión del modelo de RLogitM:\n")
+print(rlogitm_mat_conf)
+```
+
+Matriz de confusión del modelo de RLogitM:
+Confusion Matrix and Statistics
+
+          Reference
+Prediction no sí
+        no 43  5
+        sí  7 43
+                                          
+               Accuracy : 0.8776          
+                 95% CI : (0.7959, 0.9351)
+    No Information Rate : 0.5102          
+    P-Value [Acc > NIR] : 1.325e-14       
+                                          
+                  Kappa : 0.7552          
+                                          
+ Mcnemar's Test P-Value : 0.7728          
+                                          
+            Sensitivity : 0.8600          
+            Specificity : 0.8958          
+         Pos Pred Value : 0.8958          
+         Neg Pred Value : 0.8600          
+             Prevalence : 0.5102          
+         Detection Rate : 0.4388          
+   Detection Prevalence : 0.4898          
+      Balanced Accuracy : 0.8779          
+                                          
+       'Positive' Class : no              
+                                          
+También podemos obtener una gráfica de la curva ROC conseguida.
+
+```{r}
+rlogitm_2_roc <-roc(rlogitm_train_2[["pred"]][["obs"]],
+                    rlogitm_train_2[["pred"]][["sí"]],
+                    direction = "<", levels=c("no", "sí"))
+plot(rlogitm_2_roc, print.auc = TRUE)
+
+```
+
+
+Conclusión
+La instrucción 6 nos solicita que nos pronunciarse sobre la confiabilidad y la calidad predictiva de los modelos obtenidos. Veamos.
+
+Los tres modelos son confiables en términos de ajuste, generando residuos sin patrones y sin indicios de falta de independencia o que no se cumpla la linealidad de las relaciones entre predictores y la variable de respuesta. En el caso de los modelos de RLM, además, no se halló evidencia para dudar que se cumple la normalidad y homocedasticidad de los residuos. Además, los tres modelos consiguen niveles aceptables de multicolinealidad.
+
+Sin embargo, los tres modelos incluyeron predictores que no apotaban al buen ajuste alcanzado, en especial los modelos obtenidos con RFE. También fue necesario eliminar un par de observaciones con demasiada influencia que alteraba de forma indebida los coeficientes del modelo de RLogitM.
+
+Los modelos de RLM consiguieron una calidad predictiva relativamente buena, aunque el modelo obtenido con RFE exhibe mayor error (0,859±0,146
+ cm) que el modelo obtenido con el método de todos los subconjuntos (0,689±0,080
+ cm), aunque el primero fue evaluado en 25 conjuntos de datos mientras que el segundo en casi 2.000, por lo que esta comparación no es completamente definitiva.
+
+El modelo de RLogitM consiguió una muy buena calidad predictiva para detectar rodillas gruesas, alcanzando un área bajo la curva ROC sobre 0,92
+ estimada con validación cruzada dejando uno fuera.
+
+
+
+
+
+
+
+
